@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>技能共享平台 - 让每一项技能都有价值</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="bg-decor">
+    <div class="bg-blob blob-1"></div>
+    <div class="bg-blob blob-2"></div>
+    <div class="bg-blob blob-3"></div>
+</div>
+
+<!-- ========== 顶部导航栏 ========== -->
+<header class="navbar">
+    <div class="nav-container">
+        <!-- 角色切换（移到logo左边） -->
+        <div class="role-switch">
+            <button class="role-btn active" data-role="user" onclick="switchRole('user')">
+                <span class="role-icon">👤</span>用户端
+            </button>
+            <button class="role-btn" data-role="tech" onclick="switchRole('tech')">
+                <span class="role-icon">💻</span>技术端
+            </button>
+        </div>
+
+        <div class="logo" onclick="switchPage('home')">
+            <img src="images/logo.png" alt="logo" class="logo-img" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';">
+            <span class="logo-mark" style="display:none;">⚡</span>
+            <span class="logo-text">技能共享</span>
+        </div>
+
+        <nav class="nav-menu" id="navMenu">
+            <a class="nav-item active" data-page="home" onclick="switchPage('home')">首页</a>
+            <a class="nav-item nav-user-only" data-page="service-market" onclick="switchPage('service-market')">服务市场</a>
+            <a class="nav-item nav-user-only" data-page="publish-task" onclick="switchPage('publish-task')">发布任务</a>
+            <a class="nav-item nav-tech-only" data-page="market" onclick="switchPage('market')" style="display:none;">技能市场</a>
+            <a class="nav-item nav-tech-only" data-page="publish" onclick="switchPage('publish')" style="display:none;">发布服务</a>
+            <a class="nav-item nav-tech-only" data-page="tech-hall" onclick="switchPage('tech-hall')" style="display:none;">接单大厅</a>
+            <a class="nav-item" data-page="cooperate" onclick="switchPage('cooperate')">共创项目</a>
+            <a class="nav-item nav-msg" data-page="messages" onclick="switchPage('messages')">
+                消息
+                <span class="nav-badge" id="navMsgBadge" style="display:none;">0</span>
+            </a>
+            <a class="nav-item nav-order" data-page="orders" onclick="switchPage('orders')">
+                我的订单
+                <span class="nav-badge" id="navOrderBadge" style="display:none;">0</span>
+            </a>
+        </nav>
+
+        <div class="nav-right">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="搜索技能、服务..." onkeyup="handleSearch(event)">
+                <button onclick="doSearch()">🔍</button>
+            </div>
+            <div class="user-area" id="userArea">
+                <button class="btn-ghost" onclick="showLoginModal()">登录</button>
+                <button class="btn-primary btn-sm" onclick="showRegisterModal()">注册</button>
+            </div>
+            <div class="user-info" id="userInfo" style="display:none;">
+                <img class="user-avatar-img" id="userAvatarImg" src="" style="display:none;" onclick="switchPage('messages')">
+                <span class="user-avatar" id="userAvatar">U</span>
+                <span class="user-name" id="userName">用户</span>
+                <button class="btn-logout" onclick="logout()">退出</button>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- ========== 主内容区 ========== -->
+<main class="main-content">
+
+    <!-- ========== 首页 ========== -->
+    <section class="page active" id="page-home">
+        <div class="carousel" id="carousel">
+            <div class="carousel-track" id="carouselTrack">
+                <div class="carousel-slide slide-1">
+                    <div class="slide-content">
+                        <span class="slide-tag">技能变现</span>
+                        <h1>让每一项技能<br>都有价值</h1>
+                        <p>大学生技能共享平台 · 接单赚钱 · 多人共创 · 技能变现</p>
+                        <div class="slide-btns">
+                            <button class="btn-white" onclick="switchPage('service-market')">浏览服务</button>
+                            <button class="btn-outline-white" onclick="switchPage('publish')">发布我的技能</button>
+                        </div>
+                    </div>
+                    <div class="slide-visual">
+                        <div class="float-card card-a">🎬<span>视频剪辑</span></div>
+                        <div class="float-card card-b">🎨<span>设计创作</span></div>
+                        <div class="float-card card-c">💻<span>编程开发</span></div>
+                        <div class="float-card card-d">✂️<span>手工定制</span></div>
+                        <div class="blob blob-1"></div>
+                        <div class="blob blob-2"></div>
+                    </div>
+                </div>
+                <div class="carousel-slide slide-2">
+                    <div class="slide-content">
+                        <span class="slide-tag">多人共创</span>
+                        <h1>组队完成项目<br>技能互补 收益共享</h1>
+                        <p>发起或加入共创项目，找到志同道合的伙伴，一起完成挑战</p>
+                        <div class="slide-btns">
+                            <button class="btn-white" onclick="switchPage('cooperate')">探索项目</button>
+                            <button class="btn-outline-white" onclick="showCreateProjectModal()">创建项目</button>
+                        </div>
+                    </div>
+                    <div class="slide-visual">
+                        <div class="team-avatar t1">张</div>
+                        <div class="team-avatar t2">李</div>
+                        <div class="team-avatar t3">王</div>
+                        <div class="team-avatar t4">赵</div>
+                        <div class="team-center">🤝</div>
+                        <div class="blob blob-3"></div>
+                    </div>
+                </div>
+                <div class="carousel-slide slide-3">
+                    <div class="slide-content">
+                        <span class="slide-tag">安全可靠</span>
+                        <h1>平台担保交易<br>技能认证 放心接单</h1>
+                        <p>平台技能认证体系 · 交易担保 · 评价反馈 · 保障双方权益</p>
+                        <div class="slide-btns">
+                            <button class="btn-white" onclick="showRegisterModal()">立即加入</button>
+                            <button class="btn-outline-white" onclick="switchPage('service-market')">看看市场</button>
+                        </div>
+                    </div>
+                    <div class="slide-visual">
+                        <div class="shield-icon">🛡️</div>
+                        <div class="feature-badge f1">✓ 技能认证</div>
+                        <div class="feature-badge f2">✓ 担保交易</div>
+                        <div class="feature-badge f3">✓ 评价体系</div>
+                        <div class="blob blob-4"></div>
+                    </div>
+                </div>
+            </div>
+            <button class="carousel-prev" onclick="carouselPrev()">‹</button>
+            <button class="carousel-next" onclick="carouselNext()">›</button>
+            <div class="carousel-dots" id="carouselDots"></div>
+        </div>
+
+        <div class="section reveal" id="homeUserSection">
+            <h2 class="section-title">平台服务</h2>
+            <p class="section-subtitle">我们提供丰富的技能服务，满足你的各类需求</p>
+            <div class="category-grid" id="homeUserCategoryGrid"></div>
+        </div>
+
+        <div class="section reveal" id="homeTechSection" style="display:none;">
+            <h2 class="section-title">服务分类</h2>
+            <p class="section-subtitle">选择你需要的服务类型，发现更多精彩</p>
+            <div class="category-grid" id="homeTechCategoryGrid"></div>
+        </div>
+
+        <div class="section reveal" id="homeTechServiceSection" style="display:none;">
+            <div class="section-header">
+                <div><h2 class="section-title">热门技能服务</h2><p class="section-subtitle">精选优质服务，满足你的需求</p></div>
+                <a class="more-link" onclick="switchPage('market')">查看全部 →</a>
+            </div>
+            <div class="service-grid" id="homeServiceGrid"></div>
+        </div>
+
+        <div class="section reveal">
+            <div class="section-header">
+                <div><h2 class="section-title">正在招募的共创项目</h2><p class="section-subtitle">加入团队，一起创造价值</p></div>
+                <a class="more-link" onclick="switchPage('cooperate')">查看全部 →</a>
+            </div>
+            <div class="project-grid" id="homeProjectGrid"></div>
+        </div>
+    </section>
+
+    <!-- ========== 服务市场（用户端） ========== -->
+    <section class="page" id="page-service-market">
+        <div class="page-header-with-back">
+            <button class="back-btn" onclick="switchPage('home')">← 返回</button>
+            <div><h1>服务市场</h1><p class="page-subtitle">探索平台提供的各类技能服务，发布技能的同学可在此求职</p></div>
+        </div>
+        <div class="service-market-intro reveal">
+            <div class="intro-card">
+                <div class="intro-icon">🎯</div>
+                <h3>发布需求任务</h3>
+                <p>有需求？发布任务，让技能者主动联系你</p>
+                <button class="btn-primary btn-sm" onclick="switchPage('publish-task')">立即发布</button>
+            </div>
+            <div class="intro-card">
+                <div class="intro-icon">💼</div>
+                <h3>我是技能者</h3>
+                <p>有技能？切换到技术端，发布服务或接单</p>
+                <button class="btn-ghost btn-sm" onclick="switchRole('tech')">切换技术端</button>
+            </div>
+        </div>
+        <div class="section reveal">
+            <h2 class="section-title">服务分类</h2>
+            <p class="section-subtitle">点击分类查看详细服务类型</p>
+            <div class="category-grid" id="serviceMarketGrid"></div>
+        </div>
+    </section>
+
+    <!-- ========== 分类详情页 ========== -->
+    <section class="page" id="page-category">
+        <div class="page-header-with-back">
+            <button class="back-btn" onclick="goBackFromCategory()">← 返回</button>
+            <div><h1 id="categoryTitle">服务分类</h1><p id="categoryDesc" class="page-subtitle">选择具体的服务类型</p></div>
+        </div>
+        <div class="subcategory-grid reveal" id="subcategoryGrid"></div>
+        <div class="section" id="categoryServiceSection" style="display:none;">
+            <h3 class="subsection-title" id="categoryServiceTitle">全部服务</h3>
+            <div class="service-grid" id="categoryServiceGrid"></div>
+        </div>
+    </section>
+
+    <!-- ========== 技能市场（技术端） ========== -->
+    <section class="page" id="page-market">
+        <div class="page-header-with-back">
+            <button class="back-btn" onclick="switchPage('home')">← 返回</button>
+            <div><h1>技能市场</h1><p class="page-subtitle">发现大学生的优质技能服务</p></div>
+        </div>
+        <div class="filter-bar reveal">
+            <div class="filter-group">
+                <span class="filter-label">分类：</span>
+                <button class="filter-btn active" data-cat="all" onclick="filterMarket('all')">全部</button>
+                <button class="filter-btn" data-cat="线上数字服务" onclick="filterMarket('线上数字服务')">线上数字</button>
+                <button class="filter-btn" data-cat="手作实物定制" onclick="filterMarket('手作实物定制')">手作实物</button>
+                <button class="filter-btn" data-cat="同城线下劳务" onclick="filterMarket('同城线下劳务')">同城线下</button>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">排序：</span>
+                <select class="sort-select" onchange="sortMarket(this.value)">
+                    <option value="default">默认排序</option>
+                    <option value="price-asc">价格从低到高</option>
+                    <option value="price-desc">价格从高到低</option>
+                    <option value="newest">最新发布</option>
+                </select>
+            </div>
+        </div>
+        <div class="service-grid reveal" id="marketServiceGrid"></div>
+        <div class="empty-state" id="marketEmpty" style="display:none;"><span class="empty-icon">📭</span><p>暂无符合条件的服务</p></div>
+    </section>
+
+    <!-- ========== 接单大厅（技术端） ========== -->
+    <section class="page" id="page-tech-hall">
+        <div class="page-header-with-back">
+            <button class="back-btn" onclick="switchPage('home')">← 返回</button>
+            <div><h1>接单大厅</h1><p class="page-subtitle">浏览用户发布的需求任务，选择你能完成的接单</p></div>
+        </div>
+        <div class="section reveal">
+            <h3 class="subsection-title">选择服务分类</h3>
+            <div class="category-grid" id="techHallCategoryGrid"></div>
+        </div>
+        <div class="section" id="techHallSubSection" style="display:none;">
+            <h3 class="subsection-title" id="techHallSubTitle">具体类型</h3>
+            <div class="subcategory-grid" id="techHallSubGrid"></div>
+        </div>
+        <div class="section reveal" id="techHallTaskSection">
+            <h3 class="subsection-title" id="techHallTaskTitle">全部需求任务</h3>
+            <div class="task-grid" id="taskGrid"></div>
+            <div class="empty-state" id="taskEmpty" style="display:none;"><span class="empty-icon">📋</span><p>暂无需求任务</p></div>
+        </div>
+    </section>
+
+    <!-- ========== 消息页面（参考抖音网页版） ========== -->
+    <section class="page" id="page-messages">
+        <div class="messages-container">
+            <!-- 左侧会话列表 -->
+            <div class="msg-sidebar">
+                <div class="msg-sidebar-header">
+                    <h3>消息</h3>
+                </div>
+                <div class="msg-list" id="msgList"></div>
+                <div class="msg-empty" id="msgEmpty" style="display:none;">
+                    <span class="empty-icon">💬</span>
+                    <p>暂无消息</p>
+                    <p style="font-size:12px;color:#86868b;margin-top:4px;">接单或下单后会自动创建对话</p>
+                </div>
+            </div>
+            <!-- 右侧聊天窗口 -->
+            <div class="msg-chat" id="msgChat">
+                <div class="msg-chat-placeholder" id="msgChatPlaceholder">
+                    <span style="font-size:64px;opacity:0.3;">💬</span>
+                    <p style="color:#86868b;margin-top:12px;">选择一个会话开始聊天</p>
+                </div>
+                <div class="msg-chat-window" id="msgChatWindow" style="display:none;">
+                    <div class="msg-chat-header" id="msgChatHeader"></div>
+                    <div class="msg-chat-body" id="msgChatBody"></div>
+                    <div class="msg-chat-input">
+                        <label class="msg-file-btn" title="发送文件/图片">
+                            📎
+                            <input type="file" id="msgFileInput" style="display:none;" onchange="sendMessageFile(event)" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.mp3">
+                        </label>
+                        <input type="text" id="msgInput" placeholder="说点什么..." onkeyup="handleChatKey(event)">
+                        <button class="btn-primary btn-sm" onclick="sendChatMessage()">发送</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== 发布服务（技术端） ========== -->
+    <section class="page" id="page-publish">
+        <div class="page-header-with-back">
+            <button class="back-btn" onclick="switchPage('home')">← 返回</button>
+            <div><h1>发布技能服务</h1><p class="page-subtitle">上架你的技能，开始接单赚钱</p></div>
+        </div>
+        <div class="form-card reveal">
+            <form id="publishForm" onsubmit="submitService(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>服务标题 <span class="required">*</span></label>
+                        <input type="text" id="serviceTitle" placeholder="例如：短视频剪辑 / PPT美化" required>
+                    </div>
+                    <div class="form-group">
+                        <label>服务价格（元） <span class="required">*</span></label>
+                        <input type="number" id="servicePrice" placeholder="80" min="0" step="0.01" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>服务分类 <span class="required">*</span></label>
+                        <select id="serviceType" required onchange="updateSubCategoryOptions('service')">
+                            <option value="">请选择分类</option>
+                            <option value="线上数字服务">线上数字服务</option>
+                            <option value="手作实物定制">手作实物定制</option>
+                            <option value="同城线下劳务">同城线下劳务</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>具体类型</label>
+                        <select id="serviceSubCategory"><option value="">请先选择分类</option></select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>技能标签</label>
+                    <input type="text" id="serviceTag" placeholder="剪辑,调色,字幕（逗号分隔）">
+                </div>
+                <div class="form-group">
+                    <label>服务详情描述 <span class="required">*</span></label>
+                    <textarea id="serviceDesc" rows="4" placeholder="详细描述你的服务内容、交付标准、交付时间等..." required></textarea>
+                </div>
+                <!-- 封面图上传 -->
+                <div class="form-group">
+                    <label>封面图片</label>
+                    <div class="upload-area" onclick="document.getElementById('serviceCoverInput').click()">
+                        <div class="upload-preview" id="serviceCoverPreview">
+                            <span class="upload-icon">🖼️</span>
+                            <span class="upload-text">点击选择封面图片</span>
+                        </div>
+                        <input type="file" id="serviceCoverInput" style="display:none;" accept="image/*" onchange="handleCoverUpload(event,'service')">
+                    </div>
+                    <small class="form-hint">支持 JPG/PNG/WebP，建议尺寸 600×400px</small>
+                </div>
+                <!-- 作品样例多文件上传 -->
+                <div class="form-group">
+                    <label>作品样例（可多选，支持图片/视频/音频）</label>
+                    <div class="upload-area" onclick="document.getElementById('serviceSampleInput').click()">
+                        <div class="upload-preview" id="serviceSamplePreview">
+                            <span class="upload-icon">📁</span>
+                            <span class="upload-text">点击选择作品样例（可多选）</span>
+                        </div>
+                        <input type="file" id="serviceSampleInput" style="display:none;" multiple accept="image/*,video/*,audio/*" onchange="handleSampleUpload(event,'service')">
+                    </div>
+                    <small class="form-hint">支持图片(JPG/PNG/GIF)、视频(MP4)、音频(MP3)，可多选</small>
+                    <div class="sample-list" id="serviceSampleList"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">发布服务</button>
+                    <button type="reset" class="btn-ghost" onclick="resetServiceUpload()">重置</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- ========== 发布任务（用户端） ========== -->
+    <section class="page" id="page-publish-task">
+        <div class="page-header-with-back">
+            <button class="back-btn" onclick="switchPage('home')">← 返回</button>
+            <div><h1>发布需求任务</h1><p class="page-subtitle">描述你的需求，等待技能者接单</p></div>
+        </div>
+        <div class="form-card reveal">
+            <form id="publishTaskForm" onsubmit="submitTask(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>任务标题 <span class="required">*</span></label>
+                        <input type="text" id="taskTitle" placeholder="例如：需要剪辑一条1分钟短视频" required>
+                    </div>
+                    <div class="form-group">
+                        <label>预算（元） <span class="required">*</span></label>
+                        <input type="number" id="taskBudget" placeholder="100" min="0" step="0.01" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>任务分类 <span class="required">*</span></label>
+                        <select id="taskType" required onchange="updateSubCategoryOptions('task')">
+                            <option value="">请选择分类</option>
+                            <option value="线上数字服务">线上数字服务</option>
+                            <option value="手作实物定制">手作实物定制</option>
+                            <option value="同城线下劳务">同城线下劳务</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>具体类型</label>
+                        <select id="taskSubCategory"><option value="">请先选择分类</option></select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>期望交付时间</label>
+                    <input type="text" id="taskDeadline" placeholder="例如：3天内 / 下周五前">
+                </div>
+                <div class="form-group">
+                    <label>任务详情描述 <span class="required">*</span></label>
+                    <textarea id="taskDesc" rows="4" placeholder="详细描述你的需求、要求、参考样例等..." required></textarea>
+                </div>
+                <!-- 任务附件上传（图片/视频/文档） -->
+                <div class="form-group">
+                    <label>参考样品/对标文件（可多选，支持图片/视频/文档）</label>
+                    <div class="upload-area" onclick="document.getElementById('taskFileInput').click()">
+                        <div class="upload-preview" id="taskFilePreview">
+                            <span class="upload-icon">📎</span>
+                            <span class="upload-text">点击上传参考文件（图片/视频/文档，可多选）</span>
+                        </div>
+                        <input type="file" id="taskFileInput" style="display:none;" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.mp3" onchange="handleSampleUpload(event,'task')">
+                    </div>
+                    <small class="form-hint">支持图片、视频(MP4)、PDF、Word、Excel、PPT、压缩包等，可多选</small>
+                    <div class="sample-list" id="taskSampleList"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">发布任务</button>
+                    <button type="reset" class="btn-ghost" onclick="resetTaskUpload()">重置</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- ========== 共创项目 ========== -->
+    <section class="page" id="page-cooperate">
+        <div class="page-header-with-back">
+            <button class="back-btn" onclick="switchPage('home')">← 返回</button>
+            <div><h1>多人共创项目</h1><p class="page-subtitle">组队完成项目，技能互补，收益共享</p></div>
+            <button class="btn-primary" onclick="showCreateProjectModal()">+ 创建项目</button>
+        </div>
+        <div class="project-grid reveal" id="cooperateGrid"></div>
+        <div class="empty-state" id="cooperateEmpty" style="display:none;"><span class="empty-icon">🚀</span><p>暂无共创项目，点击上方按钮创建第一个</p></div>
+    </section>
+
+    <!-- ========== 我的订单 ========== -->
+    <section class="page" id="page-orders">
+        <div class="page-header-with-back">
+            <button class="back-btn" onclick="switchPage('home')">← 返回</button>
+            <div><h1>我的订单</h1><p class="page-subtitle">管理你所有的订单和任务</p></div>
+        </div>
+        <div class="order-tabs reveal">
+            <button class="order-tab active" data-tab="received" onclick="switchOrderTab('received')">我接收的</button>
+            <button class="order-tab" data-tab="published" onclick="switchOrderTab('published')">我发布的</button>
+            <button class="order-tab" data-tab="history" onclick="switchOrderTab('history')">历史订单</button>
+        </div>
+        <div class="order-list" id="orderList"></div>
+        <div class="empty-state" id="orderEmpty" style="display:none;"><span class="empty-icon">📋</span><p id="orderEmptyText">暂无订单</p></div>
+    </section>
+
+</main>
+
+<!-- ========== 页脚 ========== -->
+<footer class="footer">
+    <div class="footer-container">
+        <div class="footer-col">
+            <div class="footer-logo"><img src="images/logo.png" alt="logo" class="footer-logo-img" onerror="this.style.display='none';">技能共享平台</div>
+            <p>大学生创新创业训练计划项目</p>
+            <p>让每一项技能都有价值</p>
+        </div>
+        <div class="footer-col">
+            <h4>快速链接</h4>
+            <a onclick="switchPage('service-market')">服务市场</a>
+            <a onclick="switchPage('cooperate')">共创项目</a>
+            <a onclick="switchPage('messages')">消息</a>
+            <a onclick="switchPage('orders')">我的订单</a>
+        </div>
+        <div class="footer-col">
+            <h4>帮助中心</h4>
+            <a>使用指南</a>
+            <a>平台规则</a>
+            <a>联系我们</a>
+        </div>
+        <div class="footer-col">
+            <h4>关于我们</h4>
+            <a>项目介绍</a>
+            <a>团队成员</a>
+            <a>联系方式</a>
+        </div>
+    </div>
+    <div class="footer-bottom"><p>© 2026 技能共享平台 · 大学生创新创业训练计划项目</p></div>
+</footer>
+
+<!-- ========== 弹窗：登录 ========== -->
+<div class="modal" id="loginModal">
+    <div class="modal-content modal-sm">
+        <div class="modal-header"><h3>用户登录</h3><span class="modal-close" onclick="closeModal('loginModal')">×</span></div>
+        <div class="modal-body">
+            <form onsubmit="doLogin(event)">
+                <div class="form-group"><label>账号</label><input type="text" id="loginUsername" placeholder="请输入账号" required></div>
+                <div class="form-group"><label>密码</label><input type="password" id="loginPassword" placeholder="请输入密码" required></div>
+                <button type="submit" class="btn-primary btn-block">登录</button>
+            </form>
+            <p class="modal-tip">还没有账号？<a onclick="closeModal('loginModal');showRegisterModal()">立即注册</a></p>
+            <p class="modal-tip" style="margin-top:8px;font-size:12px;color:#86868b;">测试账号：editor01 / 123456</p>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 弹窗：注册（含头像选择） ========== -->
+<div class="modal" id="registerModal">
+    <div class="modal-content modal-sm">
+        <div class="modal-header"><h3>用户注册</h3><span class="modal-close" onclick="closeModal('registerModal')">×</span></div>
+        <div class="modal-body">
+            <form onsubmit="doRegister(event)">
+                <!-- 头像选择 -->
+                <div class="form-group" style="text-align:center;">
+                    <label>选择头像</label>
+                    <div class="avatar-upload" onclick="document.getElementById('regAvatarInput').click()">
+                        <img id="regAvatarPreview" src="" style="display:none;" class="avatar-preview-img">
+                        <span id="regAvatarPlaceholder" class="avatar-placeholder">👤</span>
+                        <span class="avatar-upload-hint">点击选择头像</span>
+                        <input type="file" id="regAvatarInput" style="display:none;" accept="image/*" onchange="handleAvatarUpload(event)">
+                    </div>
+                </div>
+                <div class="form-group"><label>账号 <span class="required">*</span></label><input type="text" id="regUsername" placeholder="设置登录账号" required></div>
+                <div class="form-group"><label>密码 <span class="required">*</span></label><input type="password" id="regPassword" placeholder="设置密码" required></div>
+                <div class="form-group"><label>真实姓名</label><input type="text" id="regRealName" placeholder="选填"></div>
+                <div class="form-group"><label>手机号</label><input type="text" id="regPhone" placeholder="选填"></div>
+                <div class="form-group">
+                    <label>用户类型</label>
+                    <select id="regUserType">
+                        <option value="0">普通客户（发布任务/购买服务）</option>
+                        <option value="1">技能提供者（发布服务/接单）</option>
+                    </select>
+                </div>
+                <div class="form-group" id="regSkillGroup" style="display:none;">
+                    <label>技能标签</label><input type="text" id="regSkillTag" placeholder="剪辑,PPT,设计（逗号分隔）">
+                </div>
+                <button type="submit" class="btn-primary btn-block">注册</button>
+            </form>
+            <p class="modal-tip">已有账号？<a onclick="closeModal('registerModal');showLoginModal()">立即登录</a></p>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 弹窗：服务详情 ========== -->
+<div class="modal" id="serviceDetailModal">
+    <div class="modal-content modal-lg">
+        <div class="modal-header"><h3 id="detailTitle">服务详情</h3><span class="modal-close" onclick="closeModal('serviceDetailModal')">×</span></div>
+        <div class="modal-body" id="detailBody"></div>
+    </div>
+</div>
+
+<!-- ========== 弹窗：任务详情（含封面+附件） ========== -->
+<div class="modal" id="taskDetailModal">
+    <div class="modal-content modal-lg">
+        <div class="modal-header"><h3 id="taskDetailTitle">任务详情</h3><span class="modal-close" onclick="closeModal('taskDetailModal')">×</span></div>
+        <div class="modal-body" id="taskDetailBody"></div>
+    </div>
+</div>
+
+<!-- ========== 弹窗：创建共创项目 ========== -->
+<div class="modal" id="createProjectModal">
+    <div class="modal-content modal-md">
+        <div class="modal-header"><h3>创建共创项目</h3><span class="modal-close" onclick="closeModal('createProjectModal')">×</span></div>
+        <div class="modal-body">
+            <form onsubmit="submitProject(event)">
+                <div class="form-group"><label>项目名称 <span class="required">*</span></label><input type="text" id="projectName" placeholder="例如：校园短视频创作团队" required></div>
+                <div class="form-group"><label>项目描述 <span class="required">*</span></label><textarea id="projectDesc" rows="3" placeholder="描述项目目标、需要的技能角色、分工方式等..." required></textarea></div>
+                <div class="form-row">
+                    <div class="form-group"><label>项目预算（元）</label><input type="number" id="projectBudget" placeholder="选填" min="0" step="0.01"></div>
+                    <div class="form-group"><label>招募人数</label><input type="number" id="projectMembers" placeholder="选填" min="1"></div>
+                </div>
+                <div class="form-group"><label>需要的技能</label><input type="text" id="projectSkills" placeholder="剪辑,文案,摄影（逗号分隔）"></div>
+                <button type="submit" class="btn-primary btn-block">发布项目（自动创建群聊）</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 弹窗：项目详情（含群聊入口） ========== -->
+<div class="modal" id="projectDetailModal">
+    <div class="modal-content modal-md">
+        <div class="modal-header"><h3 id="projectDetailTitle">项目详情</h3><span class="modal-close" onclick="closeModal('projectDetailModal')">×</span></div>
+        <div class="modal-body" id="projectDetailBody"></div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="js/main.js"></script>
+</body>
+</html>

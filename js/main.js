@@ -1,0 +1,1362 @@
+/* ============================================================
+ * 技能共享平台 - 主逻辑 v4
+ * ============================================================
+ * 【可替换图片 - 总说明】
+ * 本文件中所有可替换图片的位置都标注了 【可替换图片】 注释。
+ * 图片存储方式：
+ *   1. 静态图片：放在 images/ 目录，用相对路径引用（如 images/logo.png）
+ *   2. 用户上传图片：自动转为 base64 存在 localStorage，刷新不丢失
+ *   3. 上线后：将 localStorage 替换为后端API调用，图片上传到云存储（如Cloudflare R2）
+ * ============================================================ */
+
+// ========== 数据版本（变更后自动清空旧数据） ==========
+const DATA_VERSION = 'v4';
+
+// ========== 分类配置（每类末尾加"其他"） ==========
+const CATEGORIES = {
+    digital: {
+        name: '线上数字服务',
+        desc: '剪辑·PPT·设计·编程·文案',
+        // 【可替换图片】分类图标路径，替换 images/cat-digital.png 即可
+        icon: 'images/cat-digital.png',
+        iconEmoji: '💻',
+        subs: [
+            { name: '短视频剪辑', icon: '🎬' },
+            { name: 'PPT制作', icon: '📊' },
+            { name: '平面设计', icon: '🎨' },
+            { name: 'UI设计', icon: '📱' },
+            { name: '编程开发', icon: '💻' },
+            { name: '文案写作', icon: '✍️' },
+            { name: '翻译配音', icon: '🎙️' },
+            { name: '数据处理', icon: '📈' },
+            { name: '其他', icon: '✨' }
+        ]
+    },
+    handmade: {
+        name: '手作实物定制',
+        desc: '饰品·滴胶·手绘·编织·皮具',
+        // 【可替换图片】分类图标路径
+        icon: 'images/cat-handmade.png',
+        iconEmoji: '🎨',
+        subs: [
+            { name: '手工饰品', icon: '💍' },
+            { name: '滴胶作品', icon: '💧' },
+            { name: '羊毛毡', icon: '🐑' },
+            { name: '手绘定制', icon: '🖌️' },
+            { name: '编织钩针', icon: '🧶' },
+            { name: '皮具手作', icon: '👜' },
+            { name: '印章篆刻', icon: '🔖' },
+            { name: '文创周边', icon: '🎁' },
+            { name: '其他', icon: '✨' }
+        ]
+    },
+    local: {
+        name: '同城线下劳务',
+        desc: '摄影·跑腿·家教·陪练·化妆',
+        // 【可替换图片】分类图标路径
+        icon: 'images/cat-local.png',
+        iconEmoji: '📍',
+        subs: [
+            { name: '摄影跟拍', icon: '📷' },
+            { name: '跑腿代办', icon: '🏃' },
+            { name: '家教辅导', icon: '📚' },
+            { name: '乐器陪练', icon: '🎸' },
+            { name: '健身指导', icon: '💪' },
+            { name: '化妆造型', icon: '💄' },
+            { name: '搬家搬运', icon: '📦' },
+            { name: '活动协助', icon: '🎉' },
+            { name: '其他', icon: '✨' }
+        ]
+    },
+    cooperate: {
+        name: '多人共创项目',
+        desc: '组队·项目·竞赛·创业',
+        // 【可替换图片】分类图标路径
+        icon: 'images/cat-cooperate.png',
+        iconEmoji: '🤝',
+        subs: []
+    }
+};
+
+// ========== 数据库操作（localStorage 模拟） ==========
+const DB = {
+    get(key, def) {
+        try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; }
+        catch(e) { return def; }
+    },
+    set(key, val) { localStorage.setItem(key, JSON.stringify(val)); },
+    remove(key) { localStorage.removeItem(key); }
+};
+
+// ========== 全局状态 ==========
+let currentUser = null;
+let currentRole = 'user'; // user / tech
+let currentPage = 'home';
+let carouselIndex = 0;
+let carouselTimer = null;
+let currentCategory = null;
+let currentSubCategory = null;
+let currentOrderTab = 'received';
+let currentChatKey = null;
+let uploadState = { serviceCover: null, serviceSamples: [], taskFiles: [], regAvatar: null };
+
+// ========== 初始化 ==========
+document.addEventListener('DOMContentLoaded', () => {
+    initData();
+    loadSession();
+    initCarousel();
+    initScrollReveal();
+    renderAll();
+    updateNavRole();
+    // 注册时用户类型切换显示技能标签
+    document.getElementById('regUserType').addEventListener('change', function() {
+        document.getElementById('regSkillGroup').style.display = this.value === '1' ? 'block' : 'none';
+    });
+});
+
+// ========== 数据初始化（预置测试数据） ==========
+function initData() {
+    if (DB.get('sp_version') !== DATA_VERSION) {
+        // 版本变更，清空旧数据
+        ['sp_users','sp_services','sp_orders','sp_tasks','sp_projects','sp_messages','sp_notifications','sp_current_user','sp_role'].forEach(k => DB.remove(k));
+        DB.set('sp_version', DATA_VERSION);
+
+        // 预置用户
+        const users = [
+            { id:1, username:'editor01', password:'123456', real_name:'张剪辑', user_type:1, skill_tag:'剪辑,调色,字幕', phone:'13800000001', avatar:null, created_at:Date.now() },
+            { id:2, username:'designer01', password:'123456', real_name:'李设计', user_type:1, skill_tag:'设计,UI,插画', phone:'13800000002', avatar:null, created_at:Date.now() },
+            { id:3, username:'customer01', password:'123456', real_name:'王客户', user_type:0, skill_tag:'', phone:'13800000003', avatar:null, created_at:Date.now() },
+            { id:4, username:'photo01', password:'123456', real_name:'赵摄影', user_type:1, skill_tag:'摄影,修图,跟拍', phone:'13800000004', avatar:null, created_at:Date.now() },
+            { id:5, username:'handmade01', password:'123456', real_name:'陈手作', user_type:1, skill_tag:'手工,滴胶,编织', phone:'13800000005', avatar:null, created_at:Date.now() },
+            { id:6, username:'tutor01', password:'123456', real_name:'刘家教', user_type:1, skill_tag:'家教,数学,物理', phone:'13800000006', avatar:null, created_at:Date.now() },
+            { id:7, username:'code01', password:'123456', real_name:'孙程序', user_type:1, skill_tag:'编程,前端,Python', phone:'13800000007', avatar:null, created_at:Date.now() }
+        ];
+        DB.set('sp_users', users);
+
+        // 预置服务
+        const services = [
+            { id:1, user_id:1, title:'短视频剪辑与后期', service_desc:'提供短视频剪辑、字幕添加、BGM配乐、调色服务，支持抖音/小红书/B站等平台格式输出，24小时内交付。', price:80, service_type:'线上数字服务', sub_category:'短视频剪辑', tags:['剪辑','调色','字幕'], cover:'images/task-clip.jpg', sample:[], status:1, created_at:Date.now() },
+            { id:2, user_id:2, title:'PPT定制美化设计', service_desc:'专业PPT设计，涵盖答辩、汇报、商业计划书等场景，提供模板定制、内容排版、动画效果，可加急交付。', price:150, service_type:'线上数字服务', sub_category:'PPT制作', tags:['PPT','设计','排版'], cover:'images/task-ppt.jpg', sample:[], status:1, created_at:Date.now() },
+            { id:3, user_id:4, title:'校园活动跟拍摄影', service_desc:'杭州同城线下摄影服务，覆盖校园活动、毕业照、人像写真，提供精修20张+原片全送，需提前3天预约。', price:300, service_type:'同城线下劳务', sub_category:'摄影跟拍', tags:['摄影','跟拍','修图'], cover:'images/task-photo.jpg', sample:[], status:1, created_at:Date.now() },
+            { id:4, user_id:5, title:'手工滴胶饰品定制', service_desc:'纯手工滴胶饰品定制，可做钥匙扣、书签、吊坠等，支持来图定制、颜色自选，3-5天交付。', price:50, service_type:'手作实物定制', sub_category:'滴胶作品', tags:['手工','滴胶','定制'], cover:'images/task-handmade.jpg', sample:[], status:1, created_at:Date.now() },
+            { id:5, user_id:2, title:'海报/宣传单平面设计', service_desc:'专业平面设计，涵盖海报、宣传单、名片、公众号配图等，提供3版修改，源文件交付。', price:120, service_type:'线上数字服务', sub_category:'平面设计', tags:['设计','海报','排版'], cover:'images/task-design.jpg', sample:[], status:1, created_at:Date.now() },
+            { id:6, user_id:7, title:'Python脚本/小程序开发', service_desc:'Python自动化脚本、数据处理、爬虫、微信小程序开发，可提供源码和注释，支持后续维护。', price:200, service_type:'线上数字服务', sub_category:'编程开发', tags:['编程','Python','前端'], cover:'images/task-code.jpg', sample:[], status:1, created_at:Date.now() },
+            { id:7, user_id:6, title:'高数/大物家教辅导', service_desc:'大一高等数学、大学物理家教辅导，可线上/线下，擅长期末冲刺、知识点梳理，提分明显。', price:80, service_type:'同城线下劳务', sub_category:'家教辅导', tags:['家教','数学','物理'], cover:'images/task-ppt.jpg', sample:[], status:1, created_at:Date.now() },
+            { id:8, user_id:1, title:'Vlog/旅拍视频剪辑', service_desc:'Vlog、旅拍、生活记录视频剪辑，支持4K输出，包含调色、转场、字幕、BGM，风格可定制。', price:120, service_type:'线上数字服务', sub_category:'短视频剪辑', tags:['剪辑','Vlog','调色'], cover:'images/task-clip.jpg', sample:[], status:1, created_at:Date.now() }
+        ];
+        DB.set('sp_services', services);
+
+        // 预置任务（10+条，带AI封面）
+        const tasks = [
+            { id:1, title:'需要剪辑一条1分钟社团招新视频', budget:100, task_type:'线上数字服务', sub_category:'短视频剪辑', deadline:'3天内', desc:'社团招新视频，素材已拍好约20分钟，需要剪成1分钟左右的招新宣传片，加字幕和BGM。', publisher_id:3, taker_id:null, status:0, cover:'images/task-clip.jpg', attachments:[], created_at:Date.now() },
+            { id:2, title:'求一份挑战杯答辩PPT美化', budget:200, task_type:'线上数字服务', sub_category:'PPT制作', deadline:'下周三前', desc:'挑战杯项目答辩PPT，内容已有初稿约15页，需要美化设计，统一风格，加动画，适合现场答辩。', publisher_id:3, taker_id:null, status:0, cover:'images/task-ppt.jpg', attachments:[], created_at:Date.now() },
+            { id:3, title:'杭州下沙毕业照跟拍半天', budget:250, task_type:'同城线下劳务', sub_category:'摄影跟拍', deadline:'本周六', desc:'4人宿舍毕业照，在下沙校区拍摄半天，需要精修15张，原片全送。', publisher_id:3, taker_id:null, status:0, cover:'images/task-photo.jpg', attachments:[], created_at:Date.now() },
+            { id:4, title:'求做一个社团活动海报', budget:60, task_type:'线上数字服务', sub_category:'平面设计', deadline:'2天内', desc:'社团迎新活动海报，A3尺寸，需要包含活动时间地点、报名方式，风格活泼年轻。', publisher_id:3, taker_id:null, status:0, cover:'images/task-design.jpg', attachments:[], created_at:Date.now() },
+            { id:5, title:'Python数据处理小脚本', budget:150, task_type:'线上数字服务', sub_category:'编程开发', deadline:'一周内', desc:'需要一个Python脚本，批量处理Excel数据，做格式转换和统计，输出汇总表格。', publisher_id:3, taker_id:null, status:0, cover:'images/task-code.jpg', attachments:[], created_at:Date.now() },
+            { id:6, title:'定制一对滴胶耳坠送女友', budget:80, task_type:'手作实物定制', sub_category:'滴胶作品', deadline:'5天内', desc:'想要一对星空风格的滴胶耳坠，蓝紫色调，带金箔，送女友生日礼物，需要礼盒包装。', publisher_id:3, taker_id:null, status:0, cover:'images/task-handmade.jpg', attachments:[], created_at:Date.now() },
+            { id:7, title:'高数期末考前辅导2次', budget:160, task_type:'同城线下劳务', sub_category:'家教辅导', deadline:'两周内', desc:'大一上高数期末考前辅导，每周2次每次2小时，重点梳理极限、导数、积分，线下或线上均可。', publisher_id:3, taker_id:null, status:0, cover:'images/task-ppt.jpg', attachments:[], created_at:Date.now() },
+            { id:8, title:'公众号文章排版+封面设计', budget:90, task_type:'线上数字服务', sub_category:'文案写作', deadline:'3天内', desc:'校园公众号推文，内容已写好约2000字，需要排版美化+设计封面图，风格清新文艺。', publisher_id:3, taker_id:null, status:0, cover:'images/task-design.jpg', attachments:[], created_at:Date.now() },
+            { id:9, title:'帮忙跑腿取快递送到寝室', budget:15, task_type:'同城线下劳务', sub_category:'跑腿代办', deadline:'今天下午', desc:'菜鸟驿站有3个快递，帮忙取一下送到XX寝室楼，快递不算大。', publisher_id:3, taker_id:null, status:0, cover:'images/task-photo.jpg', attachments:[], created_at:Date.now() },
+            { id:10, title:'吉他入门陪练4节课', budget:200, task_type:'同城线下劳务', sub_category:'乐器陪练', deadline:'一个月内', desc:'吉他零基础，想找个人陪练入门，每周1次每次1小时，线下教学，我有吉他。', publisher_id:3, taker_id:null, status:0, cover:'images/task-handmade.jpg', attachments:[], created_at:Date.now() },
+            { id:11, title:'手工编织毛线围巾定制', budget:120, task_type:'手作实物定制', sub_category:'编织钩针', deadline:'两周内', desc:'想要一条粗毛线围巾，藏青色，送男生，长度180cm左右，纯手工编织。', publisher_id:3, taker_id:null, status:0, cover:'images/task-handmade.jpg', attachments:[], created_at:Date.now() },
+            { id:12, title:'英语四级作文批改+讲解', budget:50, task_type:'线上数字服务', sub_category:'翻译配音', deadline:'随时', desc:'写了5篇四级作文，希望帮忙批改语法错误并讲解提分技巧，线上沟通即可。', publisher_id:3, taker_id:null, status:0, cover:'images/task-code.jpg', attachments:[], created_at:Date.now() }
+        ];
+        DB.set('sp_tasks', tasks);
+
+        // 预置共创项目
+        const projects = [
+            { id:1, project_name:'校园短视频创作团队', project_desc:'组建一支校园短视频创作团队，共同打造校园生活类短视频，分工包括编剧、拍摄、剪辑、运营，收益按贡献分配。', creator_id:1, total_budget:500, status:'recruiting', members:[{user_id:1,role:'发起人/剪辑'}], need_skills:['编剧','拍摄','运营'], created_at:Date.now() },
+            { id:2, project_name:'大创比赛PPT与答辩支持', project_desc:'为参加大创比赛的团队提供PPT制作、答辩模拟、视觉设计支持，需要设计和演讲能力的同学加入。', creator_id:2, total_budget:300, status:'recruiting', members:[{user_id:2,role:'发起人/设计'}], need_skills:['PPT设计','答辩','文案'], created_at:Date.now() }
+        ];
+        DB.set('sp_projects', projects);
+
+        DB.set('sp_orders', []);
+        DB.set('sp_messages', []);
+        DB.set('sp_notifications', []);
+    }
+}
+
+// ========== 会话加载 ==========
+function loadSession() {
+    currentUser = DB.get('sp_current_user', null);
+    currentRole = DB.get('sp_role', 'user');
+    if (currentUser) {
+        // 重新从数据库获取最新用户信息
+        const users = DB.get('sp_users', []);
+        currentUser = users.find(u => u.id === currentUser.id) || currentUser;
+    }
+}
+
+// ========== 渲染所有 ==========
+function renderAll() {
+    renderUserArea();
+    renderHome();
+    renderOrders();
+    renderMessages();
+    updateBadges();
+}
+
+// ========== 用户区域渲染 ==========
+function renderUserArea() {
+    const userArea = document.getElementById('userArea');
+    const userInfo = document.getElementById('userInfo');
+    if (currentUser) {
+        userArea.style.display = 'none';
+        userInfo.style.display = 'flex';
+        document.getElementById('userName').textContent = currentUser.real_name || currentUser.username;
+        const avatarImg = document.getElementById('userAvatarImg');
+        const avatarSpan = document.getElementById('userAvatar');
+        if (currentUser.avatar) {
+            avatarImg.src = currentUser.avatar;
+            avatarImg.style.display = 'block';
+            avatarSpan.style.display = 'none';
+        } else {
+            avatarImg.style.display = 'none';
+            avatarSpan.style.display = 'flex';
+            avatarSpan.textContent = (currentUser.real_name || currentUser.username).charAt(0);
+        }
+    } else {
+        userArea.style.display = 'flex';
+        userInfo.style.display = 'none';
+    }
+}
+
+// ========== 导航角色切换 ==========
+function updateNavRole() {
+    document.querySelectorAll('.role-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.role === currentRole);
+    });
+    document.querySelectorAll('.nav-user-only').forEach(el => el.style.display = currentRole === 'user' ? '' : 'none');
+    document.querySelectorAll('.nav-tech-only').forEach(el => el.style.display = currentRole === 'tech' ? '' : 'none');
+}
+
+function switchRole(role) {
+    if (role === currentRole) return;
+    currentRole = role;
+    DB.set('sp_role', role);
+    updateNavRole();
+    // 如果当前在用户端专属页面，切换后回首页
+    if (role === 'tech' && document.getElementById('page-service-market').classList.contains('active')) switchPage('home');
+    else if (role === 'user' && (document.getElementById('page-market').classList.contains('active') || document.getElementById('page-tech-hall').classList.contains('active') || document.getElementById('page-publish').classList.contains('active'))) switchPage('home');
+    else if (document.getElementById('page-home').classList.contains('active')) renderHome();
+    showToast(role === 'user' ? '已切换到用户端' : '已切换到技术端', 'success');
+}
+
+// ========== 页面切换 ==========
+function switchPage(page) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + page).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
+    if (navItem) navItem.classList.add('active');
+    currentPage = page;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // 页面特定渲染
+    if (page === 'home') renderHome();
+    if (page === 'market') renderMarket();
+    if (page === 'tech-hall') renderTechHall();
+    if (page === 'cooperate') renderCooperate();
+    if (page === 'orders') { renderOrders(); clearOrderNotifications(); }
+    if (page === 'messages') { renderMessages(); updateBadges(); }
+    if (page === 'service-market') renderServiceMarket();
+
+    setTimeout(initScrollReveal, 100);
+}
+
+// ========== 首页渲染 ==========
+function renderHome() {
+    const role = currentRole;
+    // 用户端显示平台服务，技术端显示服务分类+热门服务
+    document.getElementById('homeUserSection').style.display = role === 'user' ? 'block' : 'none';
+    document.getElementById('homeTechSection').style.display = role === 'tech' ? 'block' : 'none';
+    document.getElementById('homeTechServiceSection').style.display = role === 'tech' ? 'block' : 'none';
+
+    // 渲染分类网格（用户端和技术端都用）
+    const gridId = role === 'user' ? 'homeUserCategoryGrid' : 'homeTechCategoryGrid';
+    renderCategoryGrid(gridId, role === 'user' ? 'service-market' : 'category');
+
+    // 热门服务（技术端）
+    if (role === 'tech') {
+        const services = DB.get('sp_services', []).filter(s => s.status === 1).slice(0, 6);
+        document.getElementById('homeServiceGrid').innerHTML = services.map(s => serviceCardHTML(s)).join('') || '<p style="color:#86868b;">暂无服务</p>';
+    }
+
+    // 共创项目预览
+    const projects = DB.get('sp_projects', []).slice(0, 3);
+    document.getElementById('homeProjectGrid').innerHTML = projects.map(p => projectCardHTML(p)).join('') || '<p style="color:#86868b;">暂无项目</p>';
+}
+
+// ========== 分类网格渲染 ==========
+function renderCategoryGrid(gridId, target) {
+    const grid = document.getElementById(gridId);
+    if (!grid) return;
+    grid.innerHTML = Object.entries(CATEGORIES).map(([key, cat]) => {
+        const iconHtml = cat.icon
+            ? `<img src="${cat.icon}" class="category-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`
+            : '';
+        return `<div class="category-card" onclick="handleCategoryClick('${key}','${target}')">
+            ${iconHtml}
+            <span class="category-icon-emoji" style="display:none;">${cat.iconEmoji}</span>
+            <div class="category-info">
+                <div class="category-name">${cat.name}</div>
+                <div class="category-desc">${cat.desc}</div>
+            </div>
+            <span class="category-arrow">→</span>
+        </div>`;
+    }).join('');
+}
+
+function handleCategoryClick(key, target) {
+    if (key === 'cooperate') { switchPage('cooperate'); return; }
+    currentCategory = key;
+    currentSubCategory = null;
+    if (target === 'service-market') {
+        // 用户端从服务市场进入分类详情
+        switchPage('category');
+        renderCategoryDetail('user');
+    } else {
+        switchPage('category');
+        renderCategoryDetail('tech');
+    }
+}
+
+// ========== 分类详情页 ==========
+function renderCategoryDetail(mode) {
+    const cat = CATEGORIES[currentCategory];
+    if (!cat) return;
+    document.getElementById('categoryTitle').textContent = cat.name;
+    document.getElementById('categoryDesc').textContent = mode === 'user' ? '选择具体的服务类型，查看相关服务' : '选择具体的服务类型';
+
+    // 子分类
+    const subGrid = document.getElementById('subcategoryGrid');
+    if (cat.subs.length > 0) {
+        subGrid.style.display = 'grid';
+        subGrid.innerHTML = cat.subs.map(sub => {
+            const count = mode === 'user'
+                ? DB.get('sp_services', []).filter(s => s.service_type === cat.name && s.sub_category === sub.name && s.status === 1).length
+                : DB.get('sp_tasks', []).filter(t => t.task_type === cat.name && t.sub_category === sub.name && t.status === 0).length;
+            return `<div class="subcategory-card ${currentSubCategory === sub.name ? 'active' : ''}" onclick="selectSubCategory('${sub.name}','${mode}')">
+                <div class="subcategory-icon">${sub.icon}</div>
+                <div class="subcategory-name">${sub.name}</div>
+                <div class="subcategory-count">${count}个${mode === 'user' ? '服务' : '任务'}</div>
+            </div>`;
+        }).join('');
+    } else {
+        subGrid.style.display = 'none';
+    }
+
+    // 服务/任务列表
+    const section = document.getElementById('categoryServiceSection');
+    const grid = document.getElementById('categoryServiceGrid');
+    const title = document.getElementById('categoryServiceTitle');
+    if (mode === 'user') {
+        let services = DB.get('sp_services', []).filter(s => s.service_type === cat.name && s.status === 1);
+        if (currentSubCategory) services = services.filter(s => s.sub_category === currentSubCategory);
+        title.textContent = currentSubCategory ? `${currentSubCategory} - 全部服务` : '全部服务';
+        section.style.display = services.length > 0 ? 'block' : 'none';
+        grid.innerHTML = services.map(s => serviceCardHTML(s)).join('');
+    } else {
+        let tasks = DB.get('sp_tasks', []).filter(t => t.task_type === cat.name && t.status === 0);
+        if (currentSubCategory) tasks = tasks.filter(t => t.sub_category === currentSubCategory);
+        title.textContent = currentSubCategory ? `${currentSubCategory} - 全部任务` : '全部任务';
+        section.style.display = tasks.length > 0 ? 'block' : 'none';
+        grid.innerHTML = tasks.map(t => taskCardHTML(t)).join('');
+    }
+}
+
+function selectSubCategory(name, mode) {
+    currentSubCategory = currentSubCategory === name ? null : name;
+    renderCategoryDetail(mode);
+}
+
+function goBackFromCategory() {
+    if (currentRole === 'user') switchPage('service-market');
+    else switchPage('home');
+}
+
+// ========== 服务市场（用户端） ==========
+function renderServiceMarket() {
+    renderCategoryGrid('serviceMarketGrid', 'service-market');
+}
+
+// ========== 技能市场（技术端） ==========
+let marketFilter = 'all';
+let marketSort = 'default';
+function renderMarket() {
+    let services = DB.get('sp_services', []).filter(s => s.status === 1);
+    if (marketFilter !== 'all') services = services.filter(s => s.service_type === marketFilter);
+    if (marketSort === 'price-asc') services.sort((a,b) => a.price - b.price);
+    else if (marketSort === 'price-desc') services.sort((a,b) => b.price - a.price);
+    else if (marketSort === 'newest') services.sort((a,b) => b.created_at - a.created_at);
+    document.getElementById('marketServiceGrid').innerHTML = services.map(s => serviceCardHTML(s)).join('');
+    document.getElementById('marketEmpty').style.display = services.length === 0 ? 'block' : 'none';
+}
+function filterMarket(cat) { marketFilter = cat; document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat)); renderMarket(); }
+function sortMarket(val) { marketSort = val; renderMarket(); }
+
+// ========== 接单大厅（技术端） ==========
+let techHallCategory = null;
+let techHallSubCategory = null;
+function renderTechHall() {
+    renderCategoryGrid('techHallCategoryGrid', 'tech-hall');
+    // 子分类区域
+    const subSection = document.getElementById('techHallSubSection');
+    const subGrid = document.getElementById('techHallSubGrid');
+    if (techHallCategory && CATEGORIES[techHallCategory].subs.length > 0) {
+        subSection.style.display = 'block';
+        document.getElementById('techHallSubTitle').textContent = CATEGORIES[techHallCategory].name + ' - 具体类型';
+        subGrid.innerHTML = CATEGORIES[techHallCategory].subs.map(sub => {
+            const count = DB.get('sp_tasks', []).filter(t => t.task_type === CATEGORIES[techHallCategory].name && t.sub_category === sub.name && t.status === 0).length;
+            return `<div class="subcategory-card ${techHallSubCategory === sub.name ? 'active' : ''}" onclick="selectTechHallSub('${sub.name}')">
+                <div class="subcategory-icon">${sub.icon}</div>
+                <div class="subcategory-name">${sub.name}</div>
+                <div class="subcategory-count">${count}个任务</div>
+            </div>`;
+        }).join('');
+    } else {
+        subSection.style.display = 'none';
+    }
+    // 任务列表
+    let tasks = DB.get('sp_tasks', []).filter(t => t.status === 0);
+    if (techHallCategory) tasks = tasks.filter(t => t.task_type === CATEGORIES[techHallCategory].name);
+    if (techHallSubCategory) tasks = tasks.filter(t => t.sub_category === techHallSubCategory);
+    document.getElementById('techHallTaskTitle').textContent = techHallSubCategory ? `${techHallSubCategory} - 任务列表` : techHallCategory ? `${CATEGORIES[techHallCategory].name} - 全部任务` : '全部需求任务';
+    document.getElementById('taskGrid').innerHTML = tasks.map(t => taskCardHTML(t)).join('');
+    document.getElementById('taskEmpty').style.display = tasks.length === 0 ? 'block' : 'none';
+}
+// 重写分类点击用于接单大厅
+const origHandleCategoryClick = handleCategoryClick;
+handleCategoryClick = function(key, target) {
+    if (target === 'tech-hall') {
+        if (key === 'cooperate') { switchPage('cooperate'); return; }
+        techHallCategory = techHallCategory === key ? null : key;
+        techHallSubCategory = null;
+        renderTechHall();
+    } else {
+        origHandleCategoryClick(key, target);
+    }
+};
+function selectTechHallSub(name) {
+    techHallSubCategory = techHallSubCategory === name ? null : name;
+    renderTechHall();
+}
+
+// ========== 服务卡片HTML ==========
+function serviceCardHTML(s) {
+    const users = DB.get('sp_users', []);
+    const seller = users.find(u => u.id === s.user_id);
+    const coverHtml = s.cover
+        ? `<img src="${s.cover}" onerror="this.parentElement.innerHTML='<div class=\\'service-cover\\'>📄</div>'">`
+        : '📄';
+    return `<div class="service-card" onclick="showServiceDetail(${s.id})">
+        <div class="service-cover">${coverHtml}<span class="service-tag-badge">${s.service_type}</span></div>
+        <div class="service-body">
+            <div class="service-title">${s.title}</div>
+            <div class="service-desc">${s.service_desc}</div>
+            <div class="service-tags">${(s.tags||[]).map(t => `<span class="service-tag">${t}</span>`).join('')}</div>
+            <div class="service-footer">
+                <div class="service-price">¥${s.price}<small>/次</small></div>
+                <div class="service-seller">
+                    <span class="service-seller-avatar">${(seller?.real_name || seller?.username || '?').charAt(0)}</span>
+                    <span class="service-seller-name">${seller?.real_name || seller?.username || '未知'}</span>
+                </div>
+            </div>
+        </div>
+    </div>`;
+}
+
+// ========== 任务卡片HTML ==========
+function taskCardHTML(t) {
+    const users = DB.get('sp_users', []);
+    const publisher = users.find(u => u.id === t.publisher_id);
+    const coverHtml = t.cover ? `<img src="${t.cover}" onerror="this.style.display='none'">` : '📋';
+    const canTake = currentUser && currentUser.id !== t.publisher_id && t.status === 0;
+    return `<div class="task-card">
+        <div class="task-cover">${coverHtml}</div>
+        <div class="task-body">
+            <div class="task-header">
+                <div class="task-title">${t.title}</div>
+                <div class="task-budget">¥${t.budget}</div>
+            </div>
+            <div class="task-meta">
+                <span class="task-meta-item">📁 ${t.task_type}</span>
+                ${t.sub_category ? `<span class="task-meta-item">🏷️ ${t.sub_category}</span>` : ''}
+                ${t.deadline ? `<span class="task-meta-item">⏰ ${t.deadline}</span>` : ''}
+            </div>
+            <div class="task-desc">${t.desc}</div>
+            <div class="task-footer">
+                <span class="task-publisher">发布者：${publisher?.real_name || publisher?.username || '未知'}</span>
+                ${canTake ? `<button class="task-take-btn" onclick="takeTask(${t.id})">接单</button>` :
+                  t.status === 1 ? `<span class="task-taken">已接单</span>` : ''}
+            </div>
+        </div>
+    </div>`;
+}
+
+// ========== 项目卡片HTML ==========
+function projectCardHTML(p) {
+    const statusMap = { recruiting: { text:'招募中', cls:'recruiting' }, 'in-progress': { text:'进行中', cls:'in-progress' }, completed: { text:'已完成', cls:'completed' } };
+    const st = statusMap[p.status] || statusMap.recruiting;
+    const membersHtml = (p.members || []).slice(0, 4).map((m, i) => {
+        const users = DB.get('sp_users', []);
+        const u = users.find(x => x.id === m.user_id);
+        return `<div class="project-member-avatar" style="z-index:${10-i}">${(u?.real_name || u?.username || '?').charAt(0)}</div>`;
+    }).join('');
+    return `<div class="project-card" onclick="showProjectDetail(${p.id})">
+        <div class="project-header">
+            <div class="project-name">${p.project_name}</div>
+            <span class="project-status ${st.cls}">${st.text}</span>
+        </div>
+        <div class="project-desc">${p.project_desc}</div>
+        <div class="project-footer">
+            <div class="project-members">${membersHtml}</div>
+            <div class="project-budget">${p.total_budget ? '¥'+p.total_budget : '面议'}</div>
+        </div>
+    </div>`;
+}
+
+// ========== 服务详情 ==========
+function showServiceDetail(id) {
+    const services = DB.get('sp_services', []);
+    const s = services.find(x => x.id === id);
+    if (!s) return;
+    const users = DB.get('sp_users', []);
+    const seller = users.find(u => u.id === s.user_id);
+    const coverHtml = s.cover ? `<img src="${s.cover}" onerror="this.style.display='none'">` : '📄';
+    const samplesHtml = (s.sample && s.sample.length > 0) ? s.sample.map(f => fileItemHTML(f)).join('') : '<p style="color:#86868b;font-size:13px;">暂无作品样例</p>';
+    document.getElementById('detailTitle').textContent = s.title;
+    document.getElementById('detailBody').innerHTML = `
+        <div class="detail-cover">${coverHtml}</div>
+        <div class="detail-price">¥${s.price}<small style="font-size:14px;font-weight:400;color:#86868b;">/次</small></div>
+        <div class="detail-meta">
+            <span class="detail-meta-item">👤 ${seller?.real_name || seller?.username || '未知'}</span>
+            <span class="detail-meta-item">📁 ${s.service_type}</span>
+            ${s.sub_category ? `<span class="detail-meta-item">🏷️ ${s.sub_category}</span>` : ''}
+        </div>
+        <div class="detail-section"><h4>服务详情</h4><p>${s.service_desc}</p></div>
+        <div class="detail-section"><h4>技能标签</h4><div class="detail-tags">${(s.tags||[]).map(t => `<span class="service-tag">${t}</span>`).join('')}</div></div>
+        <div class="detail-section"><h4>作品样例</h4><div class="detail-samples">${samplesHtml}</div></div>
+        <div class="detail-actions">
+            ${currentUser && currentUser.id !== s.user_id ? `<button class="btn-primary" onclick="orderService(${s.id})">立即下单</button>` : ''}
+            ${currentUser && currentUser.id !== s.user_id ? `<button class="btn-ghost" onclick="openChatWithUser(${s.user_id},'service_${s.id}')">💬 联系卖家</button>` : ''}
+            <button class="btn-ghost" onclick="closeModal('serviceDetailModal')">关闭</button>
+        </div>`;
+    openModal('serviceDetailModal');
+}
+
+// ========== 文件项HTML（用于详情展示） ==========
+function fileItemHTML(f) {
+    if (!f) return '';
+    if (f.type && f.type.startsWith('image/')) {
+        return `<div class="detail-sample"><img src="${f.data}" alt="${f.name}"></div>`;
+    }
+    const icon = f.type?.includes('video') ? '🎬' : f.type?.includes('audio') ? '🎵' : f.type?.includes('pdf') ? '📕' : f.type?.includes('word') || f.name?.endsWith('.doc') || f.name?.endsWith('.docx') ? '📘' : f.name?.endsWith('.xls') || f.name?.endsWith('.xlsx') ? '📗' : f.name?.endsWith('.zip') ? '🗜️' : '📄';
+    return `<div class="detail-file-item"><span class="detail-file-icon">${icon}</span><span class="detail-file-name">${f.name || '文件'}</span></div>`;
+}
+
+// ========== 下单服务 ==========
+function orderService(serviceId) {
+    if (!currentUser) { showLoginModal(); return; }
+    const services = DB.get('sp_services', []);
+    const s = services.find(x => x.id === serviceId);
+    if (!s) return;
+    if (s.user_id === currentUser.id) { showToast('不能购买自己的服务', 'error'); return; }
+    const orders = DB.get('sp_orders', []);
+    const newOrder = { id: Date.now(), service_id: s.id, buyer_id: currentUser.id, seller_id: s.user_id, order_price: s.price, order_status: 0, demand_text: '', created_at: Date.now() };
+    orders.push(newOrder);
+    DB.set('sp_orders', orders);
+    // 通知卖家
+    addNotification(s.user_id, 'new_order', `您有新订单：${s.title}`);
+    // 创建对话
+    ensureChat('service_' + s.id, 'private', s.user_id, currentUser.id, s.title);
+    showToast('下单成功！', 'success');
+    closeModal('serviceDetailModal');
+    switchPage('orders');
+}
+
+// ========== 接单 ==========
+function takeTask(taskId) {
+    if (!currentUser) { showLoginModal(); return; }
+    const tasks = DB.get('sp_tasks', []);
+    const t = tasks.find(x => x.id === taskId);
+    if (!t || t.status !== 0) return;
+    if (t.publisher_id === currentUser.id) { showToast('不能接自己发布的任务', 'error'); return; }
+    t.taker_id = currentUser.id;
+    t.status = 1; // 进行中
+    DB.set('sp_tasks', tasks);
+    // 通知发布者
+    addNotification(t.publisher_id, 'task_taken', `您的任务"${t.title}"已被接单`);
+    // 创建对话
+    ensureChat('task_' + t.id, 'private', t.publisher_id, currentUser.id, t.title);
+    showToast('接单成功！请在消息中联系发布者', 'success');
+    renderTechHall();
+    updateBadges();
+}
+
+// ========== 共创项目 ==========
+function renderCooperate() {
+    const projects = DB.get('sp_projects', []);
+    document.getElementById('cooperateGrid').innerHTML = projects.map(p => projectCardHTML(p)).join('');
+    document.getElementById('cooperateEmpty').style.display = projects.length === 0 ? 'block' : 'none';
+}
+
+function showCreateProjectModal() {
+    if (!currentUser) { showLoginModal(); return; }
+    document.getElementById('projectName').value = '';
+    document.getElementById('projectDesc').value = '';
+    document.getElementById('projectBudget').value = '';
+    document.getElementById('projectMembers').value = '';
+    document.getElementById('projectSkills').value = '';
+    openModal('createProjectModal');
+}
+
+function submitProject(e) {
+    e.preventDefault();
+    const projects = DB.get('sp_projects', []);
+    const newProject = {
+        id: Date.now(),
+        project_name: document.getElementById('projectName').value,
+        project_desc: document.getElementById('projectDesc').value,
+        creator_id: currentUser.id,
+        total_budget: parseFloat(document.getElementById('projectBudget').value) || 0,
+        status: 'recruiting',
+        members: [{ user_id: currentUser.id, role: '发起人' }],
+        need_skills: document.getElementById('projectSkills').value.split(',').map(s => s.trim()).filter(Boolean),
+        created_at: Date.now()
+    };
+    projects.push(newProject);
+    DB.set('sp_projects', projects);
+    // 自动创建群聊
+    ensureChat('group_' + newProject.id, 'group', null, null, newProject.project_name, newProject.id);
+    showToast('项目创建成功，已自动创建群聊！', 'success');
+    closeModal('createProjectModal');
+    renderCooperate();
+}
+
+function showProjectDetail(id) {
+    const projects = DB.get('sp_projects', []);
+    const p = projects.find(x => x.id === id);
+    if (!p) return;
+    const users = DB.get('sp_users', []);
+    const statusMap = { recruiting: { text:'招募中', cls:'recruiting' }, 'in-progress': { text:'进行中', cls:'in-progress' }, completed: { text:'已完成', cls:'completed' } };
+    const st = statusMap[p.status] || statusMap.recruiting;
+    const isMember = (p.members || []).some(m => m.user_id === currentUser?.id);
+    const isCreator = p.creator_id === currentUser?.id;
+    const membersHtml = (p.members || []).map(m => {
+        const u = users.find(x => x.id === m.user_id);
+        return `<div class="project-member-card"><div class="avatar">${(u?.real_name || u?.username || '?').charAt(0)}</div><div><div class="name">${u?.real_name || u?.username || '未知'}</div><div class="role">${m.role}</div></div></div>`;
+    }).join('');
+    document.getElementById('projectDetailTitle').textContent = p.project_name;
+    document.getElementById('projectDetailBody').innerHTML = `
+        <div class="detail-meta" style="margin-bottom:16px;">
+            <span class="project-status ${st.cls}">${st.text}</span>
+            ${p.total_budget ? `<span class="detail-meta-item">💰 预算 ¥${p.total_budget}</span>` : ''}
+        </div>
+        <div class="detail-section"><h4>项目描述</h4><p>${p.project_desc}</p></div>
+        <div class="detail-section"><h4>团队成员（${(p.members||[]).length}人）</h4><div class="project-members-list">${membersHtml}</div></div>
+        ${p.need_skills?.length ? `<div class="detail-section"><h4>需要技能</h4><div class="detail-tags">${p.need_skills.map(s => `<span class="service-tag">${s}</span>`).join('')}</div></div>` : ''}
+        <div class="detail-actions">
+            ${isMember ? `<button class="btn-primary" onclick="openGroupChat(${p.id})">💬 进入群聊</button>` : ''}
+            ${!isMember && p.status === 'recruiting' && currentUser ? `<button class="btn-primary" onclick="joinProject(${p.id})">申请加入</button>` : ''}
+            ${isCreator && p.status === 'recruiting' ? `<button class="btn-ghost" onclick="startProject(${p.id})">开始项目</button>` : ''}
+            <button class="btn-ghost" onclick="closeModal('projectDetailModal')">关闭</button>
+        </div>`;
+    openModal('projectDetailModal');
+}
+
+function joinProject(projectId) {
+    const projects = DB.get('sp_projects', []);
+    const p = projects.find(x => x.id === projectId);
+    if (!p) return;
+    if ((p.members || []).some(m => m.user_id === currentUser.id)) { showToast('你已经是项目成员', 'error'); return; }
+    p.members.push({ user_id: currentUser.id, role: '成员' });
+    DB.set('sp_projects', projects);
+    showToast('加入成功！', 'success');
+    showProjectDetail(projectId);
+    renderCooperate();
+}
+
+function startProject(projectId) {
+    const projects = DB.get('sp_projects', []);
+    const p = projects.find(x => x.id === projectId);
+    if (!p) return;
+    p.status = 'in-progress';
+    DB.set('sp_projects', projects);
+    showToast('项目已开始！', 'success');
+    showProjectDetail(projectId);
+    renderCooperate();
+}
+
+function openGroupChat(projectId) {
+    closeModal('projectDetailModal');
+    currentChatKey = 'group_' + projectId;
+    switchPage('messages');
+    renderMessages();
+    renderChatWindow();
+}
+
+// ========== 订单 ==========
+function switchOrderTab(tab) {
+    currentOrderTab = tab;
+    document.querySelectorAll('.order-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    renderOrders();
+}
+
+function renderOrders() {
+    if (!currentUser) {
+        document.getElementById('orderList').innerHTML = '';
+        document.getElementById('orderEmpty').style.display = 'block';
+        document.getElementById('orderEmptyText').textContent = '请先登录查看订单';
+        return;
+    }
+    const orders = DB.get('sp_orders', []);
+    const tasks = DB.get('sp_tasks', []);
+    const services = DB.get('sp_services', []);
+    const users = DB.get('sp_users', []);
+    let list = [];
+
+    if (currentOrderTab === 'received') {
+        // 我接收的：我是买家的服务订单 + 我是接单者的任务，进行中
+        orders.filter(o => o.buyer_id === currentUser.id && (o.order_status === 0 || o.order_status === 1)).forEach(o => {
+            const s = services.find(x => x.id === o.service_id);
+            const seller = users.find(u => u.id === o.seller_id);
+            list.push({ type:'service', id:o.id, title:s?.title || '服务', cover:s?.cover, price:o.order_price, other:seller, status:o.order_status, chatKey:'service_'+s?.id, otherId:o.seller_id });
+        });
+        tasks.filter(t => t.taker_id === currentUser.id && t.status === 1).forEach(t => {
+            const publisher = users.find(u => u.id === t.publisher_id);
+            list.push({ type:'task', id:t.id, title:t.title, cover:t.cover, price:t.budget, other:publisher, status:'progress', chatKey:'task_'+t.id, otherId:t.publisher_id });
+        });
+    } else if (currentOrderTab === 'published') {
+        // 我发布的：我是卖家的服务订单 + 我是发布者的任务，进行中
+        orders.filter(o => o.seller_id === currentUser.id && (o.order_status === 0 || o.order_status === 1)).forEach(o => {
+            const s = services.find(x => x.id === o.service_id);
+            const buyer = users.find(u => u.id === o.buyer_id);
+            list.push({ type:'service', id:o.id, title:s?.title || '服务', cover:s?.cover, price:o.order_price, other:buyer, status:o.order_status, chatKey:'service_'+s?.id, otherId:o.buyer_id });
+        });
+        tasks.filter(t => t.publisher_id === currentUser.id && t.status === 1).forEach(t => {
+            const taker = users.find(u => u.id === t.taker_id);
+            list.push({ type:'task', id:t.id, title:t.title, cover:t.cover, price:t.budget, other:taker, status:'progress', chatKey:'task_'+t.id, otherId:t.taker_id });
+        });
+    } else {
+        // 历史订单：所有已完成/已取消
+        orders.filter(o => (o.buyer_id === currentUser.id || o.seller_id === currentUser.id) && (o.order_status === 2 || o.order_status === 3)).forEach(o => {
+            const s = services.find(x => x.id === o.service_id);
+            const other = users.find(u => u.id === (o.buyer_id === currentUser.id ? o.seller_id : o.buyer_id));
+            list.push({ type:'service', id:o.id, title:s?.title || '服务', cover:s?.cover, price:o.order_price, other, status:o.order_status, chatKey:'service_'+s?.id, otherId:o.buyer_id === currentUser.id ? o.seller_id : o.buyer_id });
+        });
+        tasks.filter(t => (t.publisher_id === currentUser.id || t.taker_id === currentUser.id) && (t.status === 2 || t.status === 3)).forEach(t => {
+            const other = users.find(u => u.id === (t.publisher_id === currentUser.id ? t.taker_id : t.publisher_id));
+            list.push({ type:'task', id:t.id, title:t.title, cover:t.cover, price:t.budget, other, status:t.status === 2 ? 'completed' : 'cancelled', chatKey:'task_'+t.id, otherId:t.publisher_id === currentUser.id ? t.taker_id : t.publisher_id });
+        });
+    }
+
+    const statusMap = { 0:{text:'待确认',cls:'pending'}, 1:{text:'进行中',cls:'progress'}, 2:{text:'已完成',cls:'completed'}, 3:{text:'已取消',cls:'cancelled'}, 'progress':{text:'进行中',cls:'progress'}, 'completed':{text:'已完成',cls:'completed'}, 'cancelled':{text:'已取消',cls:'cancelled'} };
+    const unread = getUnreadCount();
+
+    document.getElementById('orderList').innerHTML = list.map(item => {
+        const st = statusMap[item.status] || statusMap[0];
+        const coverHtml = item.cover ? `<img src="${item.cover}" onerror="this.style.display='none'">` : (item.type === 'service' ? '📄' : '📋');
+        const chatUnread = unread[item.chatKey] || 0;
+        const isInProgress = item.status === 0 || item.status === 1 || item.status === 'progress';
+        let actions = '';
+        if (item.type === 'service') {
+            if (item.status === 0 && item.otherId !== currentUser.id) actions += `<button class="order-action-btn primary" onclick="confirmOrder(${item.id})">确认接单</button>`;
+            if (item.status === 1) {
+                if (item.otherId === currentUser.id) actions += `<button class="order-action-btn primary" onclick="completeOrder(${item.id})">确认完成</button>`;
+                else actions += `<button class="order-action-btn ghost" onclick="completeOrder(${item.id})">标记完成</button>`;
+            }
+            if (isInProgress) actions += `<button class="order-action-btn danger" onclick="cancelOrder(${item.id})">取消</button>`;
+        } else {
+            if (item.status === 'progress' && item.otherId === currentUser.id) actions += `<button class="order-action-btn primary" onclick="completeTask(${item.id})">确认完成</button>`;
+            if (isInProgress) actions += `<button class="order-action-btn danger" onclick="cancelTask(${item.id})">取消</button>`;
+        }
+        if (isInProgress) actions += `<button class="order-action-btn ghost order-chat-btn" onclick="openChatFromOrder('${item.chatKey}')">💬 联系${chatUnread ? `<span class="chat-badge">${chatUnread}</span>` : ''}</button>`;
+        return `<div class="order-card">
+            <div class="order-cover">${coverHtml}</div>
+            <div class="order-info">
+                <div class="order-header"><div class="order-title">${item.title}<span class="order-type-badge ${item.type}">${item.type === 'service' ? '服务订单' : '需求任务'}</span></div></div>
+                <div class="order-meta">${item.type === 'service' ? '对方：' : (item.otherId === currentUser.id ? '接单者：' : '发布者：')}${item.other?.real_name || item.other?.username || '未知'}</div>
+                <div class="order-price">¥${item.price}</div>
+            </div>
+            <div class="order-actions"><span class="order-status ${st.cls}">${st.text}</span>${actions}</div>
+        </div>`;
+    }).join('');
+    document.getElementById('orderEmpty').style.display = list.length === 0 ? 'block' : 'none';
+    document.getElementById('orderEmptyText').textContent = currentOrderTab === 'history' ? '暂无历史订单' : '暂无进行中的订单';
+}
+
+function confirmOrder(orderId) {
+    const orders = DB.get('sp_orders', []);
+    const o = orders.find(x => x.id === orderId);
+    if (o) { o.order_status = 1; DB.set('sp_orders', orders); showToast('已确认接单', 'success'); renderOrders(); }
+}
+function completeOrder(orderId) {
+    const orders = DB.get('sp_orders', []);
+    const o = orders.find(x => x.id === orderId);
+    if (o) { o.order_status = 2; DB.set('sp_orders', orders); showToast('订单已完成', 'success'); renderOrders(); }
+}
+function cancelOrder(orderId) {
+    const orders = DB.get('sp_orders', []);
+    const o = orders.find(x => x.id === orderId);
+    if (o) { o.order_status = 3; DB.set('sp_orders', orders); showToast('订单已取消', 'success'); renderOrders(); }
+}
+function completeTask(taskId) {
+    const tasks = DB.get('sp_tasks', []);
+    const t = tasks.find(x => x.id === taskId);
+    if (t) { t.status = 2; DB.set('sp_tasks', tasks); showToast('任务已完成', 'success'); renderOrders(); }
+}
+function cancelTask(taskId) {
+    const tasks = DB.get('sp_tasks', []);
+    const t = tasks.find(x => x.id === taskId);
+    if (t) { t.status = 3; DB.set('sp_tasks', tasks); showToast('任务已取消', 'success'); renderOrders(); }
+}
+
+function openChatFromOrder(chatKey) {
+    currentChatKey = chatKey;
+    switchPage('messages');
+    renderMessages();
+    renderChatWindow();
+}
+
+// ========== 消息系统 ==========
+// 消息结构：{ id, chat_key, chat_type('private'/'group'), sender_id, content, msg_type('text'/'file'), file_data, is_read, time }
+// 会话元数据存在 sp_conversations：{ chat_key, chat_type, name, avatar, user_ids, project_id, last_msg, last_time }
+
+function ensureChat(chatKey, chatType, user1, user2, name, projectId) {
+    let convs = DB.get('sp_conversations', []);
+    if (!convs.find(c => c.chat_key === chatKey)) {
+        const conv = { chat_key: chatKey, chat_type: chatType, name: name, avatar: null, user_ids: chatType === 'group' ? [] : [user1, user2], project_id: projectId || null, last_msg: '', last_time: Date.now() };
+        convs.push(conv);
+        DB.set('sp_conversations', convs);
+    }
+}
+
+function getConversations() {
+    if (!currentUser) return [];
+    const convs = DB.get('sp_conversations', []);
+    const msgs = DB.get('sp_messages', []);
+    const users = DB.get('sp_users', []);
+    const projects = DB.get('sp_projects', []);
+    return convs.filter(c => {
+        if (c.chat_type === 'group') {
+            const p = projects.find(x => x.id === c.project_id);
+            return p && (p.members || []).some(m => m.user_id === currentUser.id);
+        }
+        return c.user_ids && c.user_ids.includes(currentUser.id);
+    }).map(c => {
+        const chatMsgs = msgs.filter(m => m.chat_key === c.chat_key).sort((a,b) => a.time - b.time);
+        const last = chatMsgs[chatMsgs.length - 1];
+        const unread = chatMsgs.filter(m => m.sender_id !== currentUser.id && !m.is_read).length;
+        let displayName = c.name;
+        let avatar = c.avatar;
+        if (c.chat_type === 'private') {
+            const otherId = c.user_ids.find(id => id !== currentUser.id);
+            const other = users.find(u => u.id === otherId);
+            displayName = other?.real_name || other?.username || '用户';
+            avatar = other?.avatar || null;
+        } else {
+            const p = projects.find(x => x.id === c.project_id);
+            displayName = p?.project_name || c.name;
+        }
+        return { ...c, displayName, avatar, last_msg: last?.content || '暂无消息', last_time: last?.time || c.last_time, unread };
+    }).sort((a,b) => b.last_time - a.last_time);
+}
+
+function renderMessages() {
+    if (!currentUser) {
+        document.getElementById('msgList').innerHTML = '';
+        document.getElementById('msgEmpty').style.display = 'flex';
+        return;
+    }
+    const convs = getConversations();
+    document.getElementById('msgEmpty').style.display = convs.length === 0 ? 'flex' : 'none';
+    document.getElementById('msgList').innerHTML = convs.map(c => {
+        const avatarHtml = c.avatar
+            ? `<img src="${c.avatar}" class="msg-item-avatar" style="object-fit:cover;">`
+            : `<div class="msg-item-avatar ${c.chat_type === 'group' ? 'group' : ''}">${c.displayName.charAt(0)}</div>`;
+        const timeStr = formatTime(c.last_time);
+        return `<div class="msg-item ${currentChatKey === c.chat_key ? 'active' : ''}" onclick="selectChat('${c.chat_key}')">
+            ${avatarHtml}
+            <div class="msg-item-info">
+                <div class="msg-item-name">${c.displayName}${c.chat_type === 'group' ? ' <span style="font-size:10px;color:#86868b;font-weight:400;">群聊</span>' : ''}<span class="msg-item-time">${timeStr}</span></div>
+                <div class="msg-item-preview">${c.last_msg.substring(0, 30)}</div>
+            </div>
+            ${c.unread > 0 ? `<span class="msg-item-badge">${c.unread}</span>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function selectChat(chatKey) {
+    currentChatKey = chatKey;
+    renderMessages();
+    renderChatWindow();
+}
+
+function renderChatWindow() {
+    if (!currentChatKey) {
+        document.getElementById('msgChatPlaceholder').style.display = 'flex';
+        document.getElementById('msgChatWindow').style.display = 'none';
+        return;
+    }
+    document.getElementById('msgChatPlaceholder').style.display = 'none';
+    document.getElementById('msgChatWindow').style.display = 'flex';
+
+    const convs = DB.get('sp_conversations', []);
+    const conv = convs.find(c => c.chat_key === currentChatKey);
+    const users = DB.get('sp_users', []);
+    const projects = DB.get('sp_projects', []);
+
+    let displayName = conv?.name || '聊天';
+    let avatar = conv?.avatar;
+    let subText = '';
+    if (conv?.chat_type === 'private') {
+        const otherId = conv.user_ids.find(id => id !== currentUser?.id);
+        const other = users.find(u => u.id === otherId);
+        displayName = other?.real_name || other?.username || '用户';
+        avatar = other?.avatar || null;
+    } else {
+        const p = projects.find(x => x.id === conv?.project_id);
+        displayName = p?.project_name || conv?.name || '群聊';
+        subText = `${(p?.members || []).length}人`;
+    }
+
+    const avatarHtml = avatar
+        ? `<img src="${avatar}" class="msg-chat-header-avatar" style="object-fit:cover;">`
+        : `<div class="msg-chat-header-avatar">${displayName.charAt(0)}</div>`;
+
+    document.getElementById('msgChatHeader').innerHTML = `${avatarHtml}<div class="msg-chat-header-info"><div class="msg-chat-header-name">${displayName}</div>${subText ? `<div class="msg-chat-header-sub">${subText}</div>` : ''}</div>`;
+
+    // 渲染消息
+    const msgs = DB.get('sp_messages', []).filter(m => m.chat_key === currentChatKey).sort((a,b) => a.time - b.time);
+    const body = document.getElementById('msgChatBody');
+    body.innerHTML = msgs.map(m => {
+        const sender = users.find(u => u.id === m.sender_id);
+        const isSelf = m.sender_id === currentUser.id;
+        const timeStr = formatTime(m.time);
+        let contentHtml = '';
+        if (m.msg_type === 'file' && m.file_data) {
+            if (m.file_data.type?.startsWith('image/')) {
+                contentHtml = `<img src="${m.file_data.data}" alt="${m.file_data.name}">`;
+            } else {
+                const icon = m.file_data.type?.includes('video') ? '🎬' : m.file_data.type?.includes('audio') ? '🎵' : '📄';
+                contentHtml = `<div class="msg-file"><span>${icon}</span><span>${m.file_data.name || '文件'}</span></div>`;
+            }
+        } else {
+            contentHtml = m.content;
+        }
+        const senderName = conv?.chat_type === 'group' && !isSelf ? `<div style="font-size:10px;opacity:0.7;margin-bottom:2px;">${sender?.real_name || sender?.username || '用户'}</div>` : '';
+        return `<div class="msg-bubble ${isSelf ? 'self' : 'other'}">${senderName}${contentHtml}<div class="msg-time">${timeStr}</div></div>`;
+    }).join('');
+    body.scrollTop = body.scrollHeight;
+
+    // 标记已读
+    markChatAsRead(currentChatKey);
+}
+
+function markChatAsRead(chatKey) {
+    const msgs = DB.get('sp_messages', []);
+    let changed = false;
+    msgs.forEach(m => {
+        if (m.chat_key === chatKey && m.sender_id !== currentUser?.id && !m.is_read) { m.is_read = true; changed = true; }
+    });
+    if (changed) { DB.set('sp_messages', msgs); updateBadges(); renderMessages(); }
+}
+
+function getUnreadCount() {
+    if (!currentUser) return {};
+    const msgs = DB.get('sp_messages', []);
+    const count = {};
+    msgs.filter(m => m.sender_id !== currentUser.id && !m.is_read).forEach(m => {
+        count[m.chat_key] = (count[m.chat_key] || 0) + 1;
+    });
+    return count;
+}
+
+function sendChatMessage() {
+    if (!currentUser) { showLoginModal(); return; }
+    const input = document.getElementById('msgInput');
+    const content = input.value.trim();
+    if (!content || !currentChatKey) return;
+    sendMessage(currentChatKey, content, 'text', null);
+    input.value = '';
+}
+
+function handleChatKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+}
+
+function sendMessageFile(e) {
+    if (!currentUser) { showLoginModal(); return; }
+    const files = e.target.files;
+    if (!files || !files.length) return;
+    Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            const fileData = { name: file.name, type: file.type, size: file.size, data: ev.target.result };
+            sendMessage(currentChatKey, `[文件] ${file.name}`, 'file', fileData);
+        };
+        reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+}
+
+function sendMessage(chatKey, content, msgType, fileData) {
+    const msgs = DB.get('sp_messages', []);
+    const msg = { id: Date.now() + Math.random(), chat_key: chatKey, sender_id: currentUser.id, content, msg_type: msgType || 'text', file_data: fileData, is_read: false, time: Date.now() };
+    msgs.push(msg);
+    DB.set('sp_messages', msgs);
+    // 更新会话最后消息
+    let convs = DB.get('sp_conversations', []);
+    const conv = convs.find(c => c.chat_key === chatKey);
+    if (conv) { conv.last_msg = content; conv.last_time = Date.now(); DB.set('sp_conversations', convs); }
+    renderChatWindow();
+    renderMessages();
+    updateBadges();
+}
+
+function openChatWithUser(userId, chatKey) {
+    if (!currentUser) { showLoginModal(); return; }
+    ensureChat(chatKey, 'private', currentUser.id, userId, '');
+    currentChatKey = chatKey;
+    switchPage('messages');
+    renderMessages();
+    renderChatWindow();
+}
+
+// ========== 通知系统 ==========
+function addNotification(userId, type, message) {
+    const notifs = DB.get('sp_notifications', []);
+    notifs.push({ id: Date.now(), user_id: userId, type, message, is_read: false, created_at: Date.now() });
+    DB.set('sp_notifications', notifs);
+}
+
+function clearOrderNotifications() {
+    if (!currentUser) return;
+    const notifs = DB.get('sp_notifications', []);
+    notifs.forEach(n => { if (n.user_id === currentUser.id) n.is_read = true; });
+    DB.set('sp_notifications', notifs);
+    updateBadges();
+}
+
+function updateBadges() {
+    if (!currentUser) {
+        document.getElementById('navOrderBadge').style.display = 'none';
+        document.getElementById('navMsgBadge').style.display = 'none';
+        return;
+    }
+    // 订单通知
+    const notifs = DB.get('sp_notifications', []);
+    const orderUnread = notifs.filter(n => n.user_id === currentUser.id && !n.is_read).length;
+    const orderBadge = document.getElementById('navOrderBadge');
+    if (orderUnread > 0) { orderBadge.textContent = orderUnread; orderBadge.style.display = 'flex'; }
+    else orderBadge.style.display = 'none';
+    // 消息未读
+    const msgUnread = Object.values(getUnreadCount()).reduce((a,b) => a+b, 0);
+    const msgBadge = document.getElementById('navMsgBadge');
+    if (msgUnread > 0) { msgBadge.textContent = msgUnread; msgBadge.style.display = 'flex'; }
+    else msgBadge.style.display = 'none';
+}
+
+// ========== 发布服务 ==========
+function updateSubCategoryOptions(type) {
+    const catSelect = document.getElementById(type === 'service' ? 'serviceType' : 'taskType');
+    const subSelect = document.getElementById(type === 'service' ? 'serviceSubCategory' : 'taskSubCategory');
+    const cat = Object.values(CATEGORIES).find(c => c.name === catSelect.value);
+    if (cat && cat.subs.length > 0) {
+        subSelect.innerHTML = '<option value="">请选择具体类型</option>' + cat.subs.map(s => `<option value="${s.name}">${s.icon} ${s.name}</option>`).join('');
+    } else {
+        subSelect.innerHTML = '<option value="">无</option>';
+    }
+}
+
+function submitService(e) {
+    e.preventDefault();
+    if (!currentUser) { showLoginModal(); return; }
+    const services = DB.get('sp_services', []);
+    const newService = {
+        id: Date.now(),
+        user_id: currentUser.id,
+        title: document.getElementById('serviceTitle').value,
+        service_desc: document.getElementById('serviceDesc').value,
+        price: parseFloat(document.getElementById('servicePrice').value),
+        service_type: document.getElementById('serviceType').value,
+        sub_category: document.getElementById('serviceSubCategory').value,
+        tags: document.getElementById('serviceTag').value.split(',').map(t => t.trim()).filter(Boolean),
+        cover: uploadState.serviceCover || '',
+        sample: uploadState.serviceSamples,
+        status: 1,
+        created_at: Date.now()
+    };
+    services.push(newService);
+    DB.set('sp_services', services);
+    showToast('服务发布成功！', 'success');
+    resetServiceUpload();
+    document.getElementById('publishForm').reset();
+    switchPage('market');
+}
+
+function resetServiceUpload() {
+    uploadState.serviceCover = null;
+    uploadState.serviceSamples = [];
+    document.getElementById('serviceCoverPreview').innerHTML = '<span class="upload-icon">🖼️</span><span class="upload-text">点击选择封面图片</span>';
+    document.getElementById('serviceSampleList').innerHTML = '';
+}
+
+// ========== 发布任务 ==========
+function submitTask(e) {
+    e.preventDefault();
+    if (!currentUser) { showLoginModal(); return; }
+    const tasks = DB.get('sp_tasks', []);
+    const newTask = {
+        id: Date.now(),
+        title: document.getElementById('taskTitle').value,
+        budget: parseFloat(document.getElementById('taskBudget').value),
+        task_type: document.getElementById('taskType').value,
+        sub_category: document.getElementById('taskSubCategory').value,
+        deadline: document.getElementById('taskDeadline').value,
+        desc: document.getElementById('taskDesc').value,
+        publisher_id: currentUser.id,
+        taker_id: null,
+        status: 0,
+        cover: uploadState.taskFiles.length > 0 && uploadState.taskFiles[0].type?.startsWith('image/') ? uploadState.taskFiles[0].data : 'images/task-clip.jpg',
+        attachments: uploadState.taskFiles,
+        created_at: Date.now()
+    };
+    tasks.push(newTask);
+    DB.set('sp_tasks', tasks);
+    showToast('任务发布成功！', 'success');
+    resetTaskUpload();
+    document.getElementById('publishTaskForm').reset();
+    switchPage('home');
+}
+
+function resetTaskUpload() {
+    uploadState.taskFiles = [];
+    document.getElementById('taskFilePreview').innerHTML = '<span class="upload-icon">📎</span><span class="upload-text">点击上传参考文件（图片/视频/文档，可多选）</span>';
+    document.getElementById('taskSampleList').innerHTML = '';
+}
+
+// ========== 文件上传处理 ==========
+// 【可替换图片】封面图上传：选择后自动转base64存储，上线后改为上传到云存储
+function handleCoverUpload(e, type) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { showToast('图片不能超过2MB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        const dataUrl = ev.target.result;
+        if (type === 'service') {
+            uploadState.serviceCover = dataUrl;
+            document.getElementById('serviceCoverPreview').innerHTML = `<img src="${dataUrl}" style="max-width:200px;max-height:140px;border-radius:8px;object-fit:cover;">`;
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+// 【可替换图片】作品样例/任务附件多文件上传，支持图片/视频/音频/文档
+function handleSampleUpload(e, type) {
+    const files = e.target.files;
+    if (!files || !files.length) return;
+    Array.from(files).forEach(file => {
+        if (file.size > 5 * 1024 * 1024) { showToast(`${file.name} 超过5MB，已跳过`, 'error'); return; }
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            const fileData = { name: file.name, type: file.type, size: file.size, data: ev.target.result };
+            if (type === 'service') {
+                uploadState.serviceSamples.push(fileData);
+                renderSampleList('serviceSampleList', uploadState.serviceSamples, 'service');
+            } else {
+                uploadState.taskFiles.push(fileData);
+                renderSampleList('taskSampleList', uploadState.taskFiles, 'task');
+            }
+        };
+        reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+}
+
+function renderSampleList(elementId, files, type) {
+    const el = document.getElementById(elementId);
+    el.innerHTML = files.map((f, i) => {
+        const isImage = f.type?.startsWith('image/');
+        const icon = f.type?.includes('video') ? '🎬' : f.type?.includes('audio') ? '🎵' : f.type?.includes('pdf') ? '📕' : f.name?.endsWith('.doc') || f.name?.endsWith('.docx') ? '📘' : f.name?.endsWith('.xls') || f.name?.endsWith('.xlsx') ? '📗' : f.name?.endsWith('.zip') ? '🗜️' : '📄';
+        return `<div class="sample-item">
+            ${isImage ? `<img src="${f.data}" alt="${f.name}">` : `<span class="sample-file-icon">${icon}</span>`}
+            <span class="sample-name">${f.name}</span>
+            <span class="sample-remove" onclick="removeSample('${type}',${i})">×</span>
+        </div>`;
+    }).join('');
+}
+
+function removeSample(type, index) {
+    if (type === 'service') { uploadState.serviceSamples.splice(index, 1); renderSampleList('serviceSampleList', uploadState.serviceSamples, 'service'); }
+    else { uploadState.taskFiles.splice(index, 1); renderSampleList('taskSampleList', uploadState.taskFiles, 'task'); }
+}
+
+// ========== 头像上传 ==========
+function handleAvatarUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 1 * 1024 * 1024) { showToast('头像不能超过1MB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        uploadState.regAvatar = ev.target.result;
+        document.getElementById('regAvatarPreview').src = ev.target.result;
+        document.getElementById('regAvatarPreview').style.display = 'block';
+        document.getElementById('regAvatarPlaceholder').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+}
+
+// ========== 注册/登录 ==========
+function showRegisterModal() {
+    uploadState.regAvatar = null;
+    document.getElementById('regAvatarPreview').style.display = 'none';
+    document.getElementById('regAvatarPlaceholder').style.display = 'block';
+    document.getElementById('regSkillGroup').style.display = 'none';
+    openModal('registerModal');
+}
+
+function doRegister(e) {
+    e.preventDefault();
+    const username = document.getElementById('regUsername').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const users = DB.get('sp_users', []);
+    if (users.find(u => u.username === username)) { showToast('账号已存在', 'error'); return; }
+    const newUser = {
+        id: Date.now(),
+        username,
+        password,
+        real_name: document.getElementById('regRealName').value.trim() || username,
+        user_type: parseInt(document.getElementById('regUserType').value),
+        skill_tag: document.getElementById('regSkillTag').value,
+        phone: document.getElementById('regPhone').value,
+        avatar: uploadState.regAvatar,
+        created_at: Date.now()
+    };
+    users.push(newUser);
+    DB.set('sp_users', users);
+    currentUser = newUser;
+    DB.set('sp_current_user', currentUser);
+    // 自动切换到对应角色
+    currentRole = newUser.user_type === 1 ? 'tech' : 'user';
+    DB.set('sp_role', currentRole);
+    closeModal('registerModal');
+    renderAll();
+    updateNavRole();
+    showToast('注册成功！', 'success');
+    switchPage('home');
+}
+
+function showLoginModal() { openModal('loginModal'); }
+
+function doLogin(e) {
+    e.preventDefault();
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const users = DB.get('sp_users', []);
+    const user = users.find(u => u.username === username && u.password === password);
+    if (!user) { showToast('账号或密码错误', 'error'); return; }
+    currentUser = user;
+    DB.set('sp_current_user', currentUser);
+    currentRole = user.user_type === 1 ? 'tech' : 'user';
+    DB.set('sp_role', currentRole);
+    closeModal('loginModal');
+    renderAll();
+    updateNavRole();
+    showToast('登录成功', 'success');
+    switchPage(currentPage);
+}
+
+function logout() {
+    currentUser = null;
+    currentChatKey = null;
+    DB.remove('sp_current_user');
+    renderAll();
+    updateNavRole();
+    showToast('已退出登录', 'success');
+    switchPage('home');
+}
+
+// ========== 搜索 ==========
+function handleSearch(e) { if (e.key === 'Enter') doSearch(); }
+function doSearch() {
+    const q = document.getElementById('searchInput').value.trim().toLowerCase();
+    if (!q) return;
+    if (currentRole === 'tech') {
+        switchPage('market');
+        const services = DB.get('sp_services', []).filter(s => s.status === 1 && (s.title.toLowerCase().includes(q) || s.service_desc.toLowerCase().includes(q) || (s.tags||[]).some(t => t.toLowerCase().includes(q))));
+        document.getElementById('marketServiceGrid').innerHTML = services.map(s => serviceCardHTML(s)).join('') || '<p style="color:#86868b;">未找到相关服务</p>';
+    } else {
+        switchPage('tech-hall');
+        const tasks = DB.get('sp_tasks', []).filter(t => t.status === 0 && (t.title.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q)));
+        document.getElementById('taskGrid').innerHTML = tasks.map(t => taskCardHTML(t)).join('') || '<p style="color:#86868b;">未找到相关任务</p>';
+    }
+}
+
+// ========== 轮播 ==========
+function initCarousel() {
+    const dots = document.getElementById('carouselDots');
+    const slides = document.querySelectorAll('.carousel-slide');
+    dots.innerHTML = Array.from(slides).map((_, i) => `<span class="carousel-dot ${i===0?'active':''}" onclick="goToSlide(${i})"></span>`).join('');
+    startCarousel();
+}
+function startCarousel() {
+    if (carouselTimer) clearInterval(carouselTimer);
+    carouselTimer = setInterval(() => carouselNext(), 5000);
+}
+function carouselNext() {
+    const total = document.querySelectorAll('.carousel-slide').length;
+    carouselIndex = (carouselIndex + 1) % total;
+    updateCarousel();
+}
+function carouselPrev() {
+    const total = document.querySelectorAll('.carousel-slide').length;
+    carouselIndex = (carouselIndex - 1 + total) % total;
+    updateCarousel();
+}
+function goToSlide(i) { carouselIndex = i; updateCarousel(); startCarousel(); }
+function updateCarousel() {
+    document.getElementById('carouselTrack').style.transform = `translateX(-${carouselIndex * 100}%)`;
+    document.querySelectorAll('.carousel-dot').forEach((d, i) => d.classList.toggle('active', i === carouselIndex));
+}
+
+// ========== 滚动动画 ==========
+function initScrollReveal() {
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.reveal:not(.visible)').forEach(el => observer.observe(el));
+}
+
+// ========== 工具函数 ==========
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function showToast(msg, type) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.className = 'toast show ' + (type || '');
+    setTimeout(() => toast.className = 'toast', 2500);
+}
+function formatTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000) return '刚刚';
+    if (diff < 3600000) return Math.floor(diff/60000) + '分钟前';
+    if (diff < 86400000) return Math.floor(diff/3600000) + '小时前';
+    if (diff < 604800000) return Math.floor(diff/86400000) + '天前';
+    return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+// 点击弹窗外部关闭
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal')) e.target.classList.remove('active');
+});
