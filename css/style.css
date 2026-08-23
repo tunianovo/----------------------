@@ -575,7 +575,7 @@ img { max-width: 100%; display: block; }
     .service-grid, .project-grid { grid-template-columns: 1fr; }
     .form-row { grid-template-columns: 1fr; }
     .service-market-intro { grid-template-columns: 1fr; }
-    .messages-container { flex-direction: column; height: auto; }
+    .messages-container { flex-direction: column; height: calc(100vh - var(--nav-h) - 80px); height: calc(100dvh - var(--nav-h) - 80px); }
     .msg-sidebar { width: 100%; max-height: 300px; }
     .footer-container { grid-template-columns: 1fr; }
     .modal-sm, .modal-md, .modal-lg { width: 100%; }
