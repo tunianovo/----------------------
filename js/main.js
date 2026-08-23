@@ -915,7 +915,14 @@ function normConv(c, myId) {
     const name = c.name != null ? c.name : (c.display_name != null ? c.display_name : (c.username != null ? c.username : (c.real_name != null ? c.real_name : '用户')));
     const lastMsg = c.last_msg != null ? c.last_msg : (c.last_message != null ? c.last_message : (c.last_content != null ? c.last_content : (c.content != null ? c.content : '暂无消息')));
     const lastTime = normTime(c.last_time != null ? c.last_time : (c.updated_at != null ? c.updated_at : (c.last_at != null ? c.last_at : c.time)));
-    return { peer_id: peerId, name, avatar: c.avatar != null ? c.avatar : (c.peer_avatar || null), last_msg: lastMsg, last_time: lastTime, unread: Number(c.unread != null ? c.unread : c.unread_count) || 0 };
+    return { 
+        peer_id: Number(peerId), 
+        name, 
+        avatar: c.avatar != null ? c.avatar : (c.peer_avatar || null), 
+        last_msg: lastMsg, 
+        last_time: lastTime, 
+        unread: Number(c.unread != null ? c.unread : c.unread_count) || 0 
+    };
 }
 
 // ---------- chatKey(service_/task_) 解析出对方用户id，兼容订单/任务入口 ----------
