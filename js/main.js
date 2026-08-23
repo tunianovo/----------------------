@@ -97,7 +97,7 @@ let carouselTimer = null;
 let currentCategory = null;
 let currentSubCategory = null;
 let currentOrderTab = 'received';
-let currentChatKey = null;
+let currentChatKey = null; // 当前聊天对象：对方用户id（字符串）
 let uploadState = { serviceCover: null, serviceSamples: [], taskFiles: [], regAvatar: null };
 
 // ========== 初始化 ==========
@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function initData() {
     if (DB.get('sp_version') !== DATA_VERSION) {
         // 版本变更，清空旧数据
-        ['sp_users','sp_services','sp_orders','sp_tasks','sp_projects','sp_messages','sp_notifications','sp_current_user','sp_role'].forEach(k => DB.remove(k));
+        ['sp_users','sp_services','sp_orders','sp_tasks','sp_projects','sp_notifications','sp_current_user','sp_role'].forEach(k => DB.remove(k));
         DB.set('sp_version', DATA_VERSION);
 
         // 预置用户
@@ -171,7 +171,6 @@ function initData() {
         DB.set('sp_projects', projects);
 
         DB.set('sp_orders', []);
-        DB.set('sp_messages', []);
         DB.set('sp_notifications', []);
     }
 }
@@ -819,72 +818,174 @@ function openChatFromOrder(chatKey) {
     renderChatWindow();
 }
 
-// ========== 消息系统 ==========
-// 消息结构：{ id, chat_key, chat_type('private'/'group'), sender_id, content, msg_type('text'/'file'), file_data, is_read, time }
-// 会话元数据存在 sp_conversations：{ chat_key, chat_type, name, avatar, user_ids, project_id, last_msg, last_time }
+// ========== 消息系统（后端API版） ==========
+// 私信数据走后端 Cloudflare Worker + D1 数据库，登录/注册/服务/订单仍用 localStorage。
+// 当前仅支持文本消息，无 websocket：新消息靠每10秒轮询拉取。
 
-function ensureChat(chatKey, chatType, user1, user2, name, projectId) {
-    let convs = DB.get('sp_conversations', []);
-    if (!convs.find(c => c.chat_key === chatKey)) {
-        const conv = { chat_key: chatKey, chat_type: chatType, name: name, avatar: null, user_ids: chatType === 'group' ? [] : [user1, user2], project_id: projectId || null, last_msg: '', last_time: Date.now() };
-        convs.push(conv);
-        DB.set('sp_conversations', convs);
+const API_BASE = "https://plain-bird-80fa.pukejan.workers.dev";
+
+let msgUnreadCache = {};   // 对方userId字符串 -> 未读数（本地缓存，供角标/订单页显示）
+let msgPolling = false;    // 轮询锁，防止并发请求堆积
+
+/**
+ * 发送私信（文本消息）
+ * @param {string} senderId 发送方id，即 currentUser.id
+ * @param {string} receiverId 接收方用户id
+ * @param {string} content 消息文本
+ */
+async function sendPrivateMsg(senderId, receiverId, content) {
+    const res = await fetch(`${API_BASE}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_id: senderId, receiver_id: receiverId, content })
+    });
+    return await res.json();
+}
+
+/**
+ * 获取和某个用户的聊天历史
+ * @param {string} myId 当前登录用户id
+ * @param {string} peerId 对方用户id
+ */
+async function loadChatHistory(myId, peerId) {
+    const res = await fetch(`${API_BASE}/history?sender_id=${myId}&receiver_id=${peerId}`);
+    return await res.json();
+}
+
+/**
+ * 获取当前用户全部会话列表（左侧消息列表）
+ * @param {string} myId 当前登录用户id
+ */
+async function getConversationList(myId) {
+    const res = await fetch(`${API_BASE}/conversations?user_id=${myId}`);
+    return await res.json();
+}
+
+/**
+ * 将对方发给我的消息标记已读
+ * @param {string} peerId 对方id
+ * @param {string} myId 当前登录id
+ */
+async function markMsgRead(peerId, myId) {
+    await fetch(`${API_BASE}/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_id: peerId, receiver_id: myId })
+    });
+}
+
+// ---------- 后端响应归一化（兼容不同字段名，避免字段变动导致页面报错） ----------
+function arrFrom(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.data)) return data.data;
+    if (data && Array.isArray(data.messages)) return data.messages;
+    if (data && Array.isArray(data.conversations)) return data.conversations;
+    if (data && Array.isArray(data.list)) return data.list;
+    if (data && Array.isArray(data.result)) return data.result;
+    return [];
+}
+
+function normTime(ts) {
+    if (ts == null) return 0;
+    if (typeof ts === 'number') return ts < 1e12 ? ts * 1000 : ts;
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function normMsg(m) {
+    let isRead = m.is_read;
+    if (isRead == null) isRead = m.read;
+    if (isRead == null) isRead = m.status === 'read';
+    return {
+        sender_id: m.sender_id != null ? m.sender_id : (m.from_id != null ? m.from_id : m.sender),
+        receiver_id: m.receiver_id != null ? m.receiver_id : m.to_id,
+        content: m.content != null ? m.content : (m.text != null ? m.text : (m.message || '')),
+        time: normTime(m.created_at != null ? m.created_at : (m.time != null ? m.time : m.timestamp)),
+        is_read: !!isRead
+    };
+}
+
+function normConv(c, myId) {
+    let peerId = c.peer_id;
+    if (peerId == null) peerId = c.other_id;
+    if (peerId == null) peerId = c.other_user_id;
+    if (peerId == null && c.user_id != null && Number(c.user_id) !== Number(myId)) peerId = c.user_id;
+    if (peerId == null && c.receiver_id != null && Number(c.receiver_id) !== Number(myId)) peerId = c.receiver_id;
+    if (peerId == null && c.sender_id != null && Number(c.sender_id) !== Number(myId)) peerId = c.sender_id;
+    const name = c.name != null ? c.name : (c.display_name != null ? c.display_name : (c.username != null ? c.username : (c.real_name != null ? c.real_name : '用户')));
+    const lastMsg = c.last_msg != null ? c.last_msg : (c.last_message != null ? c.last_message : (c.last_content != null ? c.last_content : (c.content != null ? c.content : '暂无消息')));
+    const lastTime = normTime(c.last_time != null ? c.last_time : (c.updated_at != null ? c.updated_at : (c.last_at != null ? c.last_at : c.time)));
+    return { peer_id: peerId, name, avatar: c.avatar != null ? c.avatar : (c.peer_avatar || null), last_msg: lastMsg, last_time: lastTime, unread: Number(c.unread != null ? c.unread : c.unread_count) || 0 };
+}
+
+// ---------- chatKey(service_/task_) 解析出对方用户id，兼容订单/任务入口 ----------
+function peerIdFromChatKey(chatKey) {
+    if (chatKey == null || !currentUser) return null;
+    if (typeof chatKey === 'number') return chatKey;
+    const s = String(chatKey);
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    if (s.startsWith('service_')) {
+        const id = parseInt(s.slice(8), 10);
+        const o = DB.get('sp_orders', []).find(x => x.service_id === id);
+        if (o) return o.buyer_id === currentUser.id ? o.seller_id : o.buyer_id;
+        const svc = DB.get('sp_services', []).find(x => x.id === id);
+        if (svc) return svc.user_id;
+        return null;
     }
+    if (s.startsWith('task_')) {
+        const id = parseInt(s.slice(5), 10);
+        const t = DB.get('sp_tasks', []).find(x => x.id === id);
+        if (t) return t.publisher_id === currentUser.id ? t.taker_id : t.publisher_id;
+        return null;
+    }
+    return null; // group_ 群聊后端暂不支持
 }
 
-function getConversations() {
-    if (!currentUser) return [];
-    const convs = DB.get('sp_conversations', []);
-    const msgs = DB.get('sp_messages', []);
-    const users = DB.get('sp_users', []);
-    const projects = DB.get('sp_projects', []);
-    return convs.filter(c => {
-        if (c.chat_type === 'group') {
-            const p = projects.find(x => x.id === c.project_id);
-            return p && (p.members || []).some(m => m.user_id === currentUser.id);
-        }
-        return c.user_ids && c.user_ids.includes(currentUser.id);
-    }).map(c => {
-        const chatMsgs = msgs.filter(m => m.chat_key === c.chat_key).sort((a,b) => a.time - b.time);
-        const last = chatMsgs[chatMsgs.length - 1];
-        const unread = chatMsgs.filter(m => m.sender_id !== currentUser.id && !m.is_read).length;
-        let displayName = c.name;
-        let avatar = c.avatar;
-        if (c.chat_type === 'private') {
-            const otherId = c.user_ids.find(id => id !== currentUser.id);
-            const other = users.find(u => u.id === otherId);
-            displayName = other?.real_name || other?.username || '用户';
-            avatar = other?.avatar || null;
-        } else {
-            const p = projects.find(x => x.id === c.project_id);
-            displayName = p?.project_name || c.name;
-        }
-        return { ...c, displayName, avatar, last_msg: last?.content || '暂无消息', last_time: last?.time || c.last_time, unread };
-    }).sort((a,b) => b.last_time - a.last_time);
-}
+// 会话由后端按收发消息自动建立，无需本地预创建（保留空实现，兼容订单/任务/项目调用）
+function ensureChat() {}
 
-function renderMessages() {
+// ---------- 渲染左侧会话列表 ----------
+async function renderMessages() {
     if (!currentUser) {
         document.getElementById('msgList').innerHTML = '';
         document.getElementById('msgEmpty').style.display = 'flex';
         return;
     }
-    const convs = getConversations();
+    let convs = [];
+    try {
+        convs = arrFrom(await getConversationList(currentUser.id))
+            .map(c => normConv(c, currentUser.id))
+            .filter(c => c.peer_id != null);
+    } catch (e) {
+        document.getElementById('msgList').innerHTML = `<div style="padding:16px;color:#e74c3c;font-size:13px;">会话加载失败：${e.message}<br>请检查后端 API_BASE 是否可访问</div>`;
+        document.getElementById('msgEmpty').style.display = 'none';
+        return;
+    }
+    // 缓存未读数（当前打开的会话不记未读）
+    msgUnreadCache = {};
+    convs.forEach(c => {
+        if (c.unread > 0 && String(c.peer_id) !== String(currentChatKey)) msgUnreadCache[String(c.peer_id)] = c.unread;
+    });
     document.getElementById('msgEmpty').style.display = convs.length === 0 ? 'flex' : 'none';
+    const users = DB.get('sp_users', []);
     document.getElementById('msgList').innerHTML = convs.map(c => {
-        const avatarHtml = c.avatar
-            ? `<img src="${c.avatar}" class="msg-item-avatar" style="object-fit:cover;">`
-            : `<div class="msg-item-avatar ${c.chat_type === 'group' ? 'group' : ''}">${c.displayName.charAt(0)}</div>`;
-        const timeStr = formatTime(c.last_time);
-        return `<div class="msg-item ${currentChatKey === c.chat_key ? 'active' : ''}" onclick="selectChat('${c.chat_key}')">
+        const u = users.find(x => Number(x.id) === Number(c.peer_id));
+        const displayName = c.name || (u ? (u.real_name || u.username) : '用户');
+        const avatar = c.avatar || (u && u.avatar) || null;
+        const avatarHtml = avatar
+            ? `<img src="${avatar}" class="msg-item-avatar" style="object-fit:cover;">`
+            : `<div class="msg-item-avatar">${String(displayName).charAt(0)}</div>`;
+        const isActive = String(currentChatKey) === String(c.peer_id);
+        return `<div class="msg-item ${isActive ? 'active' : ''}" onclick="selectChat('${c.peer_id}')">
             ${avatarHtml}
             <div class="msg-item-info">
-                <div class="msg-item-name">${c.displayName}${c.chat_type === 'group' ? ' <span style="font-size:10px;color:#86868b;font-weight:400;">群聊</span>' : ''}<span class="msg-item-time">${timeStr}</span></div>
-                <div class="msg-item-preview">${c.last_msg.substring(0, 30)}</div>
+                <div class="msg-item-name">${displayName}<span class="msg-item-time">${formatTime(c.last_time)}</span></div>
+                <div class="msg-item-preview">${String(c.last_msg).substring(0, 30)}</div>
             </div>
             ${c.unread > 0 ? `<span class="msg-item-badge">${c.unread}</span>` : ''}
         </div>`;
     }).join('');
+    updateBadges();
 }
 
 function selectChat(chatKey) {
@@ -893,7 +994,8 @@ function selectChat(chatKey) {
     renderChatWindow();
 }
 
-function renderChatWindow() {
+// ---------- 渲染右侧聊天窗口 ----------
+async function renderChatWindow() {
     if (!currentChatKey) {
         document.getElementById('msgChatPlaceholder').style.display = 'flex';
         document.getElementById('msgChatWindow').style.display = 'none';
@@ -902,127 +1004,128 @@ function renderChatWindow() {
     document.getElementById('msgChatPlaceholder').style.display = 'none';
     document.getElementById('msgChatWindow').style.display = 'flex';
 
-    const convs = DB.get('sp_conversations', []);
-    const conv = convs.find(c => c.chat_key === currentChatKey);
+    const peerId = currentChatKey;
     const users = DB.get('sp_users', []);
-    const projects = DB.get('sp_projects', []);
+    const other = users.find(u => Number(u.id) === Number(peerId));
+    const displayName = other ? (other.real_name || other.username) : '用户';
+    const avatarHtml = other && other.avatar
+        ? `<img src="${other.avatar}" class="msg-chat-header-avatar" style="object-fit:cover;">`
+        : `<div class="msg-chat-header-avatar">${String(displayName).charAt(0)}</div>`;
+    document.getElementById('msgChatHeader').innerHTML = `${avatarHtml}<div class="msg-chat-header-info"><div class="msg-chat-header-name">${displayName}</div></div>`;
 
-    let displayName = conv?.name || '聊天';
-    let avatar = conv?.avatar;
-    let subText = '';
-    if (conv?.chat_type === 'private') {
-        const otherId = conv.user_ids.find(id => id !== currentUser?.id);
-        const other = users.find(u => u.id === otherId);
-        displayName = other?.real_name || other?.username || '用户';
-        avatar = other?.avatar || null;
-    } else {
-        const p = projects.find(x => x.id === conv?.project_id);
-        displayName = p?.project_name || conv?.name || '群聊';
-        subText = `${(p?.members || []).length}人`;
+    let msgs = [];
+    try {
+        msgs = arrFrom(await loadChatHistory(currentUser.id, peerId)).map(normMsg);
+    } catch (e) {
+        document.getElementById('msgChatBody').innerHTML = `<div style="padding:16px;color:#e74c3c;font-size:13px;">消息加载失败：${e.message}</div>`;
+        return;
+    }
+    const body = document.getElementById('msgChatBody');
+    const newBody = msgs.length
+        ? msgs.map(m => {
+            const isSelf = Number(m.sender_id) === Number(currentUser.id);
+            return `<div class="msg-bubble ${isSelf ? 'self' : 'other'}">${m.content}<div class="msg-time">${formatTime(m.time)}</div></div>`;
+        }).join('')
+        : '<div style="padding:20px;text-align:center;color:#86868b;font-size:13px;">还没有消息，发送第一条吧～</div>';
+    // 内容没变化时不重绘，避免轮询时滚动条跳动
+    if (body.innerHTML !== newBody) {
+        body.innerHTML = newBody;
+        body.scrollTop = body.scrollHeight;
     }
 
-    const avatarHtml = avatar
-        ? `<img src="${avatar}" class="msg-chat-header-avatar" style="object-fit:cover;">`
-        : `<div class="msg-chat-header-avatar">${displayName.charAt(0)}</div>`;
-
-    document.getElementById('msgChatHeader').innerHTML = `${avatarHtml}<div class="msg-chat-header-info"><div class="msg-chat-header-name">${displayName}</div>${subText ? `<div class="msg-chat-header-sub">${subText}</div>` : ''}</div>`;
-
-    // 渲染消息
-    const msgs = DB.get('sp_messages', []).filter(m => m.chat_key === currentChatKey).sort((a,b) => a.time - b.time);
-    const body = document.getElementById('msgChatBody');
-    body.innerHTML = msgs.map(m => {
-        const sender = users.find(u => u.id === m.sender_id);
-        const isSelf = m.sender_id === currentUser.id;
-        const timeStr = formatTime(m.time);
-        let contentHtml = '';
-        if (m.msg_type === 'file' && m.file_data) {
-            if (m.file_data.type?.startsWith('image/')) {
-                contentHtml = `<img src="${m.file_data.data}" alt="${m.file_data.name}">`;
-            } else {
-                const icon = m.file_data.type?.includes('video') ? '🎬' : m.file_data.type?.includes('audio') ? '🎵' : '📄';
-                contentHtml = `<div class="msg-file"><span>${icon}</span><span>${m.file_data.name || '文件'}</span></div>`;
-            }
-        } else {
-            contentHtml = m.content;
-        }
-        const senderName = conv?.chat_type === 'group' && !isSelf ? `<div style="font-size:10px;opacity:0.7;margin-bottom:2px;">${sender?.real_name || sender?.username || '用户'}</div>` : '';
-        return `<div class="msg-bubble ${isSelf ? 'self' : 'other'}">${senderName}${contentHtml}<div class="msg-time">${timeStr}</div></div>`;
-    }).join('');
-    body.scrollTop = body.scrollHeight;
-
-    // 标记已读
-    markChatAsRead(currentChatKey);
+    // 标记已读并清除本地未读缓存
+    markMsgRead(peerId, currentUser.id).catch(() => {});
+    if (msgUnreadCache[String(peerId)]) {
+        msgUnreadCache[String(peerId)] = 0;
+        updateBadges();
+        renderMessages();
+    }
 }
 
-function markChatAsRead(chatKey) {
-    const msgs = DB.get('sp_messages', []);
-    let changed = false;
-    msgs.forEach(m => {
-        if (m.chat_key === chatKey && m.sender_id !== currentUser?.id && !m.is_read) { m.is_read = true; changed = true; }
-    });
-    if (changed) { DB.set('sp_messages', msgs); updateBadges(); renderMessages(); }
-}
-
+// ---------- 未读数（按 chatKey 返回，兼容订单页联系按钮与导航角标） ----------
 function getUnreadCount() {
     if (!currentUser) return {};
-    const msgs = DB.get('sp_messages', []);
     const count = {};
-    msgs.filter(m => m.sender_id !== currentUser.id && !m.is_read).forEach(m => {
-        count[m.chat_key] = (count[m.chat_key] || 0) + 1;
+    const covered = new Set();
+    const orders = DB.get('sp_orders', []);
+    orders.filter(o => o.buyer_id === currentUser.id || o.seller_id === currentUser.id).forEach(o => {
+        const peer = o.buyer_id === currentUser.id ? o.seller_id : o.buyer_id;
+        covered.add(String(peer));
+        const u = msgUnreadCache[String(peer)] || 0;
+        if (u > 0) count['service_' + o.service_id] = u;
+    });
+    const tasks = DB.get('sp_tasks', []);
+    tasks.filter(t => t.publisher_id === currentUser.id || t.taker_id === currentUser.id).forEach(t => {
+        const peer = t.publisher_id === currentUser.id ? t.taker_id : t.publisher_id;
+        covered.add(String(peer));
+        const u = msgUnreadCache[String(peer)] || 0;
+        if (u > 0) count['task_' + t.id] = u;
+    });
+    // 未关联订单/任务的独立会话，计入总角标
+    Object.keys(msgUnreadCache).forEach(peer => {
+        if (!covered.has(peer) && msgUnreadCache[peer] > 0) count['peer_' + peer] = msgUnreadCache[peer];
     });
     return count;
 }
 
-function sendChatMessage() {
+// ---------- 发送消息 ----------
+async function sendChatMessage() {
     if (!currentUser) { showLoginModal(); return; }
     const input = document.getElementById('msgInput');
     const content = input.value.trim();
     if (!content || !currentChatKey) return;
-    sendMessage(currentChatKey, content, 'text', null);
-    input.value = '';
+    try {
+        await sendPrivateMsg(currentUser.id, currentChatKey, content);
+        input.value = '';
+        await renderChatWindow();
+        renderMessages();
+    } catch (e) {
+        showToast('发送失败：' + e.message, 'error');
+    }
 }
 
 function handleChatKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
 }
 
-function sendMessageFile(e) {
+// 后端暂不支持图片/文件消息
+function sendMessageFile() {
     if (!currentUser) { showLoginModal(); return; }
-    const files = e.target.files;
-    if (!files || !files.length) return;
-    Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = function(ev) {
-            const fileData = { name: file.name, type: file.type, size: file.size, data: ev.target.result };
-            sendMessage(currentChatKey, `[文件] ${file.name}`, 'file', fileData);
-        };
-        reader.readAsDataURL(file);
-    });
-    e.target.value = '';
-}
-
-function sendMessage(chatKey, content, msgType, fileData) {
-    const msgs = DB.get('sp_messages', []);
-    const msg = { id: Date.now() + Math.random(), chat_key: chatKey, sender_id: currentUser.id, content, msg_type: msgType || 'text', file_data: fileData, is_read: false, time: Date.now() };
-    msgs.push(msg);
-    DB.set('sp_messages', msgs);
-    // 更新会话最后消息
-    let convs = DB.get('sp_conversations', []);
-    const conv = convs.find(c => c.chat_key === chatKey);
-    if (conv) { conv.last_msg = content; conv.last_time = Date.now(); DB.set('sp_conversations', convs); }
-    renderChatWindow();
-    renderMessages();
-    updateBadges();
+    showToast('当前版本仅支持文本消息，图片/文件发送暂未支持', 'error');
 }
 
 function openChatWithUser(userId, chatKey) {
     if (!currentUser) { showLoginModal(); return; }
-    ensureChat(chatKey, 'private', currentUser.id, userId, '');
-    currentChatKey = chatKey;
+    currentChatKey = String(userId);
     switchPage('messages');
     renderMessages();
     renderChatWindow();
 }
+
+function openChatFromOrder(chatKey) {
+    if (!currentUser) { showLoginModal(); return; }
+    const peer = peerIdFromChatKey(chatKey);
+    if (peer == null) { showToast('无法定位聊天对象', 'error'); return; }
+    currentChatKey = String(peer);
+    switchPage('messages');
+    renderMessages();
+    renderChatWindow();
+}
+
+function openGroupChat(projectId) {
+    showToast('群聊功能暂未接入后端，请直接私信联系', 'error');
+}
+
+// ---------- 无 websocket：在消息页时每10秒轮询拉取新消息 ----------
+setInterval(async () => {
+    if (!currentUser || currentPage !== 'messages' || msgPolling) return;
+    msgPolling = true;
+    try {
+        await Promise.all([renderMessages(), currentChatKey ? renderChatWindow() : Promise.resolve()]);
+    } catch (e) { /* 轮询失败静默 */ }
+    msgPolling = false;
+}, 10000);
+
 
 // ========== 通知系统 ==========
 function addNotification(userId, type, message) {
