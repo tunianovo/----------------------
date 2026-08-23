@@ -839,6 +839,8 @@ async function sendPrivateMsg(senderId, receiverId, content) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sender_id: senderId, receiver_id: receiverId, content })
     });
+    // 服务器没确认写入成功（非2xx），直接抛错，前端不渲染假消息
+    if (!res.ok) throw new Error('服务器返回 HTTP ' + res.status);
     return await res.json();
 }
 
