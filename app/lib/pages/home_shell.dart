@@ -10,6 +10,30 @@ import 'market_page.dart';
 import 'chats_page.dart';
 import 'me_page.dart';
 
+/// 消息Tab图标 + 固定尺寸红点（手写Stack，杜绝被拉成长条）
+Widget _chatIcon(int unreadTotal, bool selected) {
+  final base = selected
+      ? const Icon(Icons.chat_bubble, size: 24, color: Color(0xFF0A6CFF))
+      : const Icon(Icons.chat_bubble_outline, size: 24, color: Colors.black54);
+  if (unreadTotal <= 0) return base;
+  return Stack(clipBehavior: Clip.none, children: [
+    base,
+    Positioned(
+      top: -5,
+      right: -7,
+      child: Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF3B30),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 1.5),
+        ),
+      ),
+    ),
+  ]);
+}
+
 class HomeShell extends StatefulWidget {
   final UserAccount me;
   final VoidCallback onLogout;
@@ -103,18 +127,8 @@ class _HomeShellState extends State<HomeShell> {
         destinations: [
           const NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: '服务'),
           NavigationDestination(
-              icon: Badge(
-                isLabelVisible: unreadTotal > 0,
-                backgroundColor: const Color(0xFFFF3B30),
-                smallSize: 9,
-                child: const Icon(Icons.chat_bubble_outline),
-              ),
-              selectedIcon: Badge(
-                isLabelVisible: unreadTotal > 0,
-                backgroundColor: const Color(0xFFFF3B30),
-                smallSize: 9,
-                child: const Icon(Icons.chat_bubble),
-              ),
+              icon: _chatIcon(unreadTotal, false),
+              selectedIcon: _chatIcon(unreadTotal, true),
               label: '消息'),
           const NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
         ],
