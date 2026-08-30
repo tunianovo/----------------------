@@ -179,10 +179,17 @@ function initData() {
 function loadSession() {
     currentUser = DB.get('sp_current_user', null);
     currentRole = DB.get('sp_role', 'user');
-    if (currentUser) {
-        // 重新从数据库获取最新用户信息
-        const users = DB.get('sp_users', []);
-        currentUser = users.find(u => u.id === currentUser.id) || currentUser;
+    if (currentUser && currentUser.token) {
+        // 后台从服务端刷新用户资料（服务端是唯一数据源，如头像/昵称被修改）
+        fetch(API_BASE + '/me', { headers: { 'Authorization': 'Bearer ' + currentUser.token } })
+            .then(res => res.ok ? res.json() : null)
+            .then(u => {
+                if (!u) return;
+                currentUser = Object.assign({}, u, { token: currentUser.token });
+                DB.set('sp_current_user', currentUser);
+                renderUserArea();
+            })
+            .catch(() => {});
     }
 }
 
@@ -828,52 +835,84 @@ let msgUnreadCache = {};   // 对方userId字符串 -> 未读数（本地缓存�
 let msgPolling = false;    // 轮询锁，防止并发请求堆积
 
 /**
- * 发送私信（文本消息）
- * @param {string} senderId 发送方id，即 currentUser.id
- * @param {string} receiverId 接收方用户id
+ * 统一请求：自动附带登录 token（Authorization: Bearer xxx）
+ * 登录态失效（401）时自动清除会话并弹出登录框
+ */
+async function apiFetch(path, options = {}) {
+    const headers = Object.assign({}, options.headers || {});
+    if (currentUser && currentUser.token) headers['Authorization'] = 'Bearer ' + currentUser.token;
+    if (options.body != null) headers['Content-Type'] = 'application/json';
+    const res = await fetch(API_BASE + path, Object.assign({}, options, { headers }));
+    if (res.status === 401 && currentUser) {
+        logout();
+        showLoginModal();
+        throw new Error('登录已过期，请重新登录');
+    }
+    return res;
+}
+
+/**
+ * 发送私信（文本消息）。发送者由服务端根据 token 判定，客户端无法伪造
+ * @param {string|number} receiverId 接收方用户id
  * @param {string} content 消息文本
  */
-async function sendPrivateMsg(senderId, receiverId, content) {
-    const res = await fetch(`${API_BASE}/send`, {
+async function sendPrivateMsg(receiverId, content) {
+    const res = await apiFetch(`/send`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender_id: senderId, receiver_id: receiverId, content })
+        body: JSON.stringify({ receiver_id: receiverId, content })
     });
-    // 服务器没确认写入成功（非2xx），直接抛错，前端不渲染假消息
     if (!res.ok) throw new Error('服务器返回 HTTP ' + res.status);
     return await res.json();
 }
 
 /**
  * 获取和某个用户的聊天历史
- * @param {string} myId 当前登录用户id
+ * @param {string} myId 当前登录用户id（仅用于兼容，服务端以 token 为准）
  * @param {string} peerId 对方用户id
  */
 async function loadChatHistory(myId, peerId) {
-    const res = await fetch(`${API_BASE}/history?sender_id=${myId}&receiver_id=${peerId}`);
+    const res = await apiFetch(`/history?peer_id=${encodeURIComponent(peerId)}`);
+    if (!res.ok) throw new Error('服务器返回 HTTP ' + res.status);
     return await res.json();
 }
 
 /**
- * 获取当前用户全部会话列表（左侧消息列表）
- * @param {string} myId 当前登录用户id
+ * 获取当前用户全部会话列表（左侧消息列表，服务端返回对方昵称/头像/最后一条消息）
+ * @param {string} myId 当前登录用户id（仅用于兼容）
  */
 async function getConversationList(myId) {
-    const res = await fetch(`${API_BASE}/conversations?user_id=${myId}`);
+    const res = await apiFetch(`/conversations`);
+    if (!res.ok) throw new Error('服务器返回 HTTP ' + res.status);
     return await res.json();
 }
 
 /**
  * 将对方发给我的消息标记已读
  * @param {string} peerId 对方id
- * @param {string} myId 当前登录id
+ * @param {string} myId 当前登录id（仅用于兼容）
  */
 async function markMsgRead(peerId, myId) {
-    await fetch(`${API_BASE}/read`, {
+    await apiFetch(`/read`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender_id: peerId, receiver_id: myId })
+        body: JSON.stringify({ peer_id: peerId })
     });
+}
+
+/**
+ * 从服务端批量拉取用户公开资料（昵称/头像），并写入本地缓存供展示
+ * @param {Array<string|number>} ids 用户id列表
+ */
+async function fetchUserInfo(ids) {
+    const res = await apiFetch(`/users?ids=${ids.map(encodeURIComponent).join(',')}`);
+    if (!res.ok) return [];
+    const list = await res.json();
+    const users = DB.get('sp_users', []);
+    list.forEach(u => {
+        const i = users.findIndex(x => Number(x.id) === Number(u.id));
+        if (i >= 0) Object.assign(users[i], u); else users.push(u);
+    });
+    DB.set('sp_users', users);
+    return list;
 }
 
 // ---------- 后端响应归一化（兼容不同字段名，避免字段变动导致页面报错） ----------
@@ -914,7 +953,7 @@ function normConv(c, myId) {
     if (peerId == null && c.user_id != null && Number(c.user_id) !== Number(myId)) peerId = c.user_id;
     if (peerId == null && c.receiver_id != null && Number(c.receiver_id) !== Number(myId)) peerId = c.receiver_id;
     if (peerId == null && c.sender_id != null && Number(c.sender_id) !== Number(myId)) peerId = c.sender_id;
-    const name = c.name != null ? c.name : (c.display_name != null ? c.display_name : (c.username != null ? c.username : (c.real_name != null ? c.real_name : '用户')));
+    const name = c.name != null ? c.name : (c.display_name != null ? c.display_name : (c.username != null ? c.username : (c.real_name != null ? c.real_name : null)));
     const lastMsg = c.last_msg != null ? c.last_msg : (c.last_message != null ? c.last_message : (c.last_content != null ? c.last_content : (c.content != null ? c.content : '暂无消息')));
     const lastTime = normTime(c.last_time != null ? c.last_time : (c.updated_at != null ? c.updated_at : (c.last_at != null ? c.last_at : c.time)));
     return { 
@@ -1015,7 +1054,12 @@ async function renderChatWindow() {
 
     const peerId = currentChatKey;
     const users = DB.get('sp_users', []);
-    const other = users.find(u => Number(u.id) === Number(peerId));
+    // 先查本地缓存，找不到再从服务端拉取（跨设备注册的用户本地没有缓存）
+    let other = users.find(u => Number(u.id) === Number(peerId));
+    if (!other) {
+        try { const list = await fetchUserInfo([peerId]); other = list[0] || null; }
+        catch (e) { other = null; }
+    }
     const displayName = other ? (other.real_name || other.username) : '用户';
     const avatarHtml = other && other.avatar
         ? `<img src="${other.avatar}" class="msg-chat-header-avatar" style="object-fit:cover;">`
@@ -1084,7 +1128,7 @@ async function sendChatMessage() {
     const content = input.value.trim();
     if (!content || !currentChatKey) return;
     try {
-        await sendPrivateMsg(currentUser.id, currentChatKey, content);
+        await sendPrivateMsg(currentChatKey, content);
         input.value = '';
         await renderChatWindow();
         renderMessages();
@@ -1134,7 +1178,6 @@ setInterval(async () => {
     } catch (e) { /* 轮询失败静默 */ }
     msgPolling = false;
 }, 10000);
-
 
 // ========== 通知系统 ==========
 function addNotification(userId, type, message) {
@@ -1334,31 +1377,33 @@ function doRegister(e) {
     e.preventDefault();
     const username = document.getElementById('regUsername').value.trim();
     const password = document.getElementById('regPassword').value;
-    const users = DB.get('sp_users', []);
-    if (users.find(u => u.username === username)) { showToast('账号已存在', 'error'); return; }
-    const newUser = {
-        id: Date.now(),
+    if (!username || !password) { showToast('账号和密码不能为空', 'error'); return; }
+    const payload = {
         username,
         password,
         real_name: document.getElementById('regRealName').value.trim() || username,
         user_type: parseInt(document.getElementById('regUserType').value),
         skill_tag: document.getElementById('regSkillTag').value,
         phone: document.getElementById('regPhone').value,
-        avatar: uploadState.regAvatar,
-        created_at: Date.now()
+        avatar: uploadState.regAvatar || null
     };
-    users.push(newUser);
-    DB.set('sp_users', users);
-    currentUser = newUser;
-    DB.set('sp_current_user', currentUser);
-    // 自动切换到对应角色
-    currentRole = newUser.user_type === 1 ? 'tech' : 'user';
-    DB.set('sp_role', currentRole);
-    closeModal('registerModal');
-    renderAll();
-    updateNavRole();
-    showToast('注册成功！', 'success');
-    switchPage('home');
+    fetch(`${API_BASE}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json().then(data => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+        if (!ok) { showToast(data.error || '注册失败', 'error'); return; }
+        // 注册成功后自动登录（服务端分配用户id + token，跨设备唯一）
+        applyLoginUser(Object.assign({}, data.user, { token: data.token }));
+        closeModal('registerModal');
+        renderAll();
+        updateNavRole();
+        showToast('注册成功！', 'success');
+        switchPage('home');
+    })
+    .catch(err => showToast('注册失败：' + err.message + '，请检查网络', 'error'));
 }
 
 function showLoginModal() { openModal('loginModal'); }
@@ -1367,18 +1412,37 @@ function doLogin(e) {
     e.preventDefault();
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value;
-    const users = DB.get('sp_users', []);
-    const user = users.find(u => u.username === username && u.password === password);
-    if (!user) { showToast('账号或密码错误', 'error'); return; }
+    if (!username || !password) { showToast('请输入账号和密码', 'error'); return; }
+    fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+    })
+    .then(res => res.json().then(data => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+        if (!ok) { showToast(data.error || '账号或密码错误', 'error'); return; }
+        applyLoginUser(Object.assign({}, data.user, { token: data.token }));
+        closeModal('loginModal');
+        renderAll();
+        updateNavRole();
+        showToast('登录成功', 'success');
+        switchPage(currentPage);
+    })
+    .catch(err => showToast('登录失败：' + err.message + '，请检查网络', 'error'));
+}
+
+/**
+ * 登录/注册成功后写入会话与本地用户缓存
+ */
+function applyLoginUser(user) {
     currentUser = user;
-    DB.set('sp_current_user', currentUser);
+    DB.set('sp_current_user', user);
     currentRole = user.user_type === 1 ? 'tech' : 'user';
     DB.set('sp_role', currentRole);
-    closeModal('loginModal');
-    renderAll();
-    updateNavRole();
-    showToast('登录成功', 'success');
-    switchPage(currentPage);
+    const users = DB.get('sp_users', []);
+    const i = users.findIndex(u => Number(u.id) === Number(user.id));
+    if (i >= 0) users[i] = user; else users.push(user);
+    DB.set('sp_users', users);
 }
 
 function logout() {

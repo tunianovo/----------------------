@@ -409,7 +409,11 @@ img { max-width: 100%; display: block; }
 .intro-card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; }
 
 /* ========== 消息页面（抖音风格） ========== */
-.messages-container { display: flex; height: calc(100vh - var(--nav-h) - 80px); min-height: 500px; background: var(--card-bg); backdrop-filter: blur(20px); border: 1px solid var(--border-light); border-radius: var(--radius-xl); overflow: hidden; }
+.messages-container { display: flex; height: calc(100vh - var(--nav-h) - 80px); height: calc(100dvh - var(--nav-h) - 80px); min-height: 360px; background: var(--card-bg); backdrop-filter: blur(20px); border: 1px solid var(--border-light); border-radius: var(--radius-xl); overflow: hidden; }
+@media (min-height: 700px) {
+    /* 大屏窗口保持原来的最小高度，矮窗口不再强制 500px（否则输入栏会被顶出屏幕） */
+    .messages-container { min-height: 500px; }
+}
 .msg-sidebar { width: 320px; border-right: 1px solid var(--border-light); display: flex; flex-direction: column; background: rgba(255,255,255,0.5); min-height: 0; }
 .msg-sidebar-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); }
 .msg-sidebar-header h3 { font-size: 18px; font-weight: 700; }
@@ -444,7 +448,7 @@ img { max-width: 100%; display: block; }
 .msg-bubble img { max-width: 200px; border-radius: 8px; margin-top: 4px; }
 .msg-bubble .msg-file { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.2); padding: 8px 12px; border-radius: 8px; margin-top: 4px; }
 .msg-bubble.other .msg-file { background: rgba(0,0,0,0.05); }
-.msg-chat-input { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--border-light); }
+.msg-chat-input { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--border-light); flex-shrink: 0; }
 .msg-file-btn { font-size: 20px; cursor: pointer; padding: 6px; border-radius: 8px; transition: all 0.2s; }
 .msg-file-btn:hover { background: var(--bg-secondary); }
 .msg-chat-input input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 20px; font-size: 14px; outline: none; transition: all 0.2s; }
@@ -575,7 +579,7 @@ img { max-width: 100%; display: block; }
     .service-grid, .project-grid { grid-template-columns: 1fr; }
     .form-row { grid-template-columns: 1fr; }
     .service-market-intro { grid-template-columns: 1fr; }
-    .messages-container { flex-direction: column; height: calc(100vh - var(--nav-h) - 80px); height: calc(100dvh - var(--nav-h) - 80px); }
+    .messages-container { flex-direction: column; height: calc(100vh - var(--nav-h) - 80px); height: calc(100dvh - var(--nav-h) - 80px); min-height: 0; }
     .msg-sidebar { width: 100%; max-height: 300px; }
     .footer-container { grid-template-columns: 1fr; }
     .modal-sm, .modal-md, .modal-lg { width: 100%; }
