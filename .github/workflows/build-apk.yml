@@ -37,9 +37,9 @@ jobs:
           cp -r scaffold/android ./android
           sed -i 's/android:label="jsgx_app"/android:label="己曜"/' android/app/src/main/AndroidManifest.xml
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><application|' android/app/src/main/AndroidManifest.xml
-          sed -i 's|targetCompatibility = JavaVersion.VERSION_11|targetCompatibility = JavaVersion.VERSION_11\n        isCoreLibraryDesugaringEnabled = true|' android/app/build.gradle.kts || true
-          sed -i 's|targetCompatibility JavaVersion.VERSION_11|targetCompatibility JavaVersion.VERSION_11\n        coreLibraryDesugaringEnabled true|' android/app/build.gradle || true
-          printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> android/app/build.gradle.kts
+          node -e "const fs=require('fs');for(const f of ['android/app/build.gradle.kts','android/app/build.gradle']){if(!fs.existsSync(f))continue;let c=fs.readFileSync(f,'utf8');if(f.endsWith('.kts')){c=c.replace(/targetCompatibility = JavaVersion\.VERSION_\d+/g,function(m){return m+'\n        isCoreLibraryDesugaringEnabled = true'})}else{c=c.replace(/targetCompatibility( =)? JavaVersion\.VERSION_\d+/g,function(m){return m+'\n        coreLibraryDesugaringEnabled true'})}fs.writeFileSync(f,c)}"
+          [ -f android/app/build.gradle.kts ] && printf '%s\n' 'dependencies {' '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' '}' >> android/app/build.gradle.kts || true
+          [ -f android/app/build.gradle ] && printf '%s\n' 'dependencies {' '    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"' '}' >> android/app/build.gradle || true
 
       - name: Apply launcher icons
         run: dart run flutter_launcher_icons
