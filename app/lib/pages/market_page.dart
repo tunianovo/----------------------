@@ -240,7 +240,7 @@ class _DetailSheet extends StatelessWidget {
                 onPressed: () async {
                   Navigator.pop(context);
                   // 打开与卖家的聊天（会话不存在也直接进入，发送首条消息后建立）
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: service.userId, peerName: service.sellerName)));
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: service.userId, peerName: service.sellerName, meId: me.id)));
                 },
                 icon: const Icon(Icons.chat_bubble_outline, size: 18),
                 label: const Text('聊一聊'),

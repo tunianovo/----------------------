@@ -67,7 +67,7 @@ class _ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixi
       } else if (u.id == widget.me.id) {
         _toast('这是你自己的账号', isError: true);
       } else {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: u.id, peerName: u.displayName)));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: u.id, peerName: u.displayName, meId: widget.me.id)));
       }
     } on ApiException catch (e) {
       _toast(e.message, isError: true);
@@ -146,12 +146,14 @@ class _ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixi
             trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(_time(c.lastTime), style: const TextStyle(fontSize: 11, color: Colors.black38)),
               if (c.unread > 0)
-                Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, minimumSize: const Size(18, 18)),
+                Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 5),
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                    alignment: Alignment.center,
                     decoration: BoxDecoration(color: const Color(0xFFFF3B30), borderRadius: BorderRadius.circular(9)),
                     child: Text('${c.unread}', style: const TextStyle(color: Colors.white, fontSize: 10))),
             ]),
             onTap: () async {
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: c.peerId, peerName: c.name)));
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: c.peerId, peerName: c.name, meId: widget.me.id)));
               if (mounted) _load(silent: true);
             },
           );

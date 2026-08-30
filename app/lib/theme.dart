@@ -22,7 +22,7 @@ ThemeData buildTheme() {
       centerTitle: false,
       titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.black),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: kCard,
       elevation: 0,
       surfaceTintColor: Colors.transparent,

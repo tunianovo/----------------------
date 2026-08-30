@@ -10,7 +10,8 @@ import '../theme.dart';
 class ChatPage extends StatefulWidget {
   final int peerId;
   final String peerName;
-  const ChatPage({super.key, required this.peerId, required this.peerName});
+  final int meId; // 当前登录用户id（判断消息方向）
+  const ChatPage({super.key, required this.peerId, required this.peerName, required this.meId});
   @override
   State<ChatPage> createState() => _ChatPageState();
 }
@@ -141,7 +142,7 @@ class _ChatPageState extends State<ChatPage> {
       itemCount: messages.length,
       itemBuilder: (_, i) {
         final m = messages[i];
-        final isSelf = m.senderId == widget.me.id;
+        final isSelf = m.senderId == widget.meId;
         return Align(
           alignment: isSelf ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(

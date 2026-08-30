@@ -119,7 +119,7 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
         Text('¥${_fmt(o.price)}', style: const TextStyle(color: kPrimary, fontWeight: FontWeight.w800, fontSize: 15)),
         Text(o.statusText, style: TextStyle(fontSize: 11, color: statusColor)),
       ]),
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: o.peerId, peerName: o.peerName))),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: o.peerId, peerName: o.peerName, meId: widget.me.id))),
     );
   }
 
