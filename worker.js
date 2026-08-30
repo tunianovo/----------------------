@@ -171,8 +171,15 @@ export default {
       return json({ ok: true, user: publicUser({ ...u, token }), token });
     }
 
-    // 批量查用户公开资料 GET /users?ids=1,2,3 （用于显示昵称/头像，无需登录）
+    // 查用户公开资料：GET /users?ids=1,2,3 批量，或 GET /users?username=xxx 按账号精确查找（发起新聊天用）
     if (url.pathname === '/users' && request.method === 'GET') {
+      const uname = (q.get('username') || '').trim();
+      if (uname) {
+        const { results } = await env.chat_db.prepare(
+          `SELECT id, username, real_name, user_type, skill_tag, phone, avatar, created_at FROM users WHERE username = ?`
+        ).bind(uname).all();
+        return json(results.map(publicUser));
+      }
       const ids = q.get('ids') || '';
       const list = ids.split(',').map(Number).filter(Boolean);
       if (!list.length) return json([]);

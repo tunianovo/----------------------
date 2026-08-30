@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <title>技能共享平台 - 让每一项技能都有价值</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=20260830b">
 </head>
 <body>
 
@@ -264,12 +264,13 @@
             <div class="msg-sidebar">
                 <div class="msg-sidebar-header">
                     <h3>消息</h3>
+                    <button class="new-chat-btn" onclick="showNewChatModal()">＋ 发起聊天</button>
                 </div>
                 <div class="msg-list" id="msgList"></div>
                 <div class="msg-empty" id="msgEmpty" style="display:none;">
                     <span class="empty-icon">💬</span>
                     <p>暂无消息</p>
-                    <p style="font-size:12px;color:#86868b;margin-top:4px;">接单或下单后会自动创建对话</p>
+                    <p style="font-size:12px;color:#86868b;margin-top:4px;">点上方「＋ 发起聊天」按账号找人，或接单/下单后自动创建对话</p>
                 </div>
             </div>
             <!-- 右侧聊天窗口 -->
@@ -542,6 +543,20 @@
     </div>
 </div>
 
+<!-- ========== 弹窗：发起新聊天（按账号查找） ========== -->
+<div class="modal" id="newChatModal">
+    <div class="modal-content modal-sm">
+        <div class="modal-header"><h3>发起新聊天</h3><span class="modal-close" onclick="closeModal('newChatModal')">×</span></div>
+        <div class="modal-body">
+            <form onsubmit="doStartNewChat(event)">
+                <div class="form-group"><label>对方注册账号 <span class="required">*</span></label><input type="text" id="newChatUsername" placeholder="输入对方的注册账号" required></div>
+                <button type="submit" class="btn-primary btn-block">查找并开始聊天</button>
+            </form>
+            <p class="modal-tip">输入对方注册时设置的账号（不是昵称）</p>
+        </div>
+    </div>
+</div>
+
 <!-- ========== 弹窗：服务详情 ========== -->
 <div class="modal" id="serviceDetailModal">
     <div class="modal-content modal-lg">
@@ -588,6 +603,6 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<script src="js/main.js"></script>
+<script src="js/main.js?v=20260830b"></script>
 </body>
 </html>

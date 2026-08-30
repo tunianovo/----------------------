@@ -12,6 +12,17 @@
 // ========== 数据版本（变更后自动清空旧数据） ==========
 const DATA_VERSION = 'v4';
 
+// ========== 前端版本检查：代码更新后自动强制刷新一次，避免设备用旧缓存JS调新接口而静默失败 ==========
+const APP_VERSION = 'v20260830b';
+try {
+    if (localStorage.getItem('sp_app_version') !== APP_VERSION) {
+        localStorage.setItem('sp_app_version', APP_VERSION);
+        if (!/[?&]v=/.test(location.search)) {
+            location.replace(location.pathname + '?v=' + encodeURIComponent(APP_VERSION) + location.hash);
+        }
+    }
+} catch (e) { /* 隐私模式下localStorage不可用时忽略 */ }
+
 // ========== 分类配置（每类末尾加"其他"） ==========
 const CATEGORIES = {
     digital: {
@@ -1054,12 +1065,12 @@ async function renderChatWindow() {
 
     const peerId = currentChatKey;
     const users = DB.get('sp_users', []);
-    // 先查本地缓存，找不到再从服务端拉取（跨设备注册的用户本地没有缓存）
+    // 始终以服务端资料为准（不同设备的本地缓存可能互相污染），失败时才退回本地缓存
     let other = users.find(u => Number(u.id) === Number(peerId));
-    if (!other) {
-        try { const list = await fetchUserInfo([peerId]); other = list[0] || null; }
-        catch (e) { other = null; }
-    }
+    try {
+        const list = await fetchUserInfo([peerId]);
+        if (list && list[0]) other = list[0];
+    } catch (e) { /* 离线时用本地缓存 */ }
     const displayName = other ? (other.real_name || other.username) : '用户';
     const avatarHtml = other && other.avatar
         ? `<img src="${other.avatar}" class="msg-chat-header-avatar" style="object-fit:cover;">`
@@ -1153,6 +1164,34 @@ function openChatWithUser(userId, chatKey) {
     switchPage('messages');
     renderMessages();
     renderChatWindow();
+}
+
+// ========== 发起新聊天：按注册账号查找用户（跨设备互通入口） ==========
+function showNewChatModal() {
+    if (!currentUser) { showLoginModal(); return; }
+    openModal('newChatModal');
+    setTimeout(() => { const inp = document.getElementById('newChatUsername'); if (inp) inp.focus(); }, 60);
+}
+
+async function doStartNewChat(e) {
+    e.preventDefault();
+    if (!currentUser) { showLoginModal(); return; }
+    const name = document.getElementById('newChatUsername').value.trim();
+    if (!name) return;
+    try {
+        const res = await apiFetch('/users?username=' + encodeURIComponent(name));
+        const list = await res.json();
+        if (!Array.isArray(list) || !list.length) { showToast('未找到账号「' + name + '」', 'error'); return; }
+        const u = list[0];
+        if (Number(u.id) === Number(currentUser.id)) { showToast('这是你自己的账号', 'error'); return; }
+        // 预取对方资料写入本地缓存，聊天窗口直接显示昵称
+        fetchUserInfo([u.id]).catch(() => {});
+        closeModal('newChatModal');
+        openChatWithUser(u.id, String(u.id));
+        showToast('已找到「' + (u.real_name || u.username) + '」，发送第一条消息吧', 'success');
+    } catch (err) {
+        showToast('查找用户失败：' + err.message, 'error');
+    }
 }
 
 function openChatFromOrder(chatKey) {
