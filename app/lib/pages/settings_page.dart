@@ -2,8 +2,10 @@
 // 设置：身份切换、隐私（是否可被发现）、检查更新、账号管理
 // ============================================================
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../api.dart';
+import '../bg_task.dart';
 import '../main.dart';
 import '../theme.dart';
 
@@ -29,6 +31,46 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late bool discoverable = widget.me.discoverable == 1;
+  bool bgNotify = true;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) setState(() => bgNotify = p.getBool('bg_notify') != false);
+    });
+  }
+
+  Future<void> _showLogs(BuildContext context) async {
+    final buf = StringBuffer();
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      for (final name in ['crash_log.txt', 'bg_log.txt']) {
+        final f = File(dir.path + '/' + name);
+        buf.writeln('== ' + name + ' ==');
+        buf.writeln(f.existsSync() ? (await f.readAsLines()).join('\n') : '(空)');
+      }
+    } catch (e) {
+      buf.writeln('读取失败: ' + e.toString());
+    }
+    if (!context.mounted) return;
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text('运行日志'),
+      content: SizedBox(width: 320, height: 300, child: SingleChildScrollView(child: SelectableText(buf.toString(), style: const TextStyle(fontSize: 11)))),
+      actions: [
+        TextButton(onPressed: () async {
+          final dir = await getApplicationDocumentsDirectory();
+          for (final name in ['crash_log.txt', 'bg_log.txt']) {
+            final f = File(dir.path + '/' + name);
+            if (f.existsSync()) f.deleteSync();
+          }
+          if (ctx.mounted) Navigator.pop(ctx);
+        }, child: const Text('清空')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+      ],
+    ));
+  }
 
   Future<void> _toggleDiscoverable(bool v) async {
     setState(() => discoverable = v);
@@ -85,6 +127,26 @@ class _SettingsPageState extends State<SettingsPage> {
           onChanged: (v) => _toggleDiscoverable(v),
         )),
         const SizedBox(height: 16),
+        const Text('通知', style: TextStyle(fontSize: 12, color: Colors.black38, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Card(child: SwitchListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          title: const Text('离线消息提醒', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          subtitle: const Text('App在后台时，收到新私信每15分钟提醒一次', style: TextStyle(fontSize: 11)),
+          value: bgNotify,
+          activeColor: kPrimary,
+          onChanged: (v) async {
+            setState(() => bgNotify = v);
+            final p = await SharedPreferences.getInstance();
+            await p.setBool('bg_notify', v);
+            if (v) {
+              initBackgroundPolling().catchError((_) {});
+            } else {
+              disableBackgroundPolling();
+            }
+          },
+        )),
+        const SizedBox(height: 16),
         const Text('通用', style: TextStyle(fontSize: 12, color: Colors.black38, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Card(clipBehavior: Clip.antiAlias, child: Column(children: [
@@ -95,6 +157,13 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: Text('当前版本 v$kAppVersion', style: const TextStyle(fontSize: 11)),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onCheckUpdate,
+          ),
+          const Divider(height: 1, indent: 16),
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            leading: const Icon(Icons.bug_report_outlined, color: kPrimary),
+            title: const Text('查看运行日志', style: TextStyle(fontSize: 14)),
+            onTap: () => _showLogs(context),
           ),
           const Divider(height: 1, indent: 16),
           ListTile(

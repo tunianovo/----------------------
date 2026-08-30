@@ -6,12 +6,23 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
 import 'api.dart';
 
 const String kPollTaskName = 'jyaoMsgPoll';
+
+void writeBgLog(String line) {
+  try {
+    getApplicationDocumentsDirectory().then((d) {
+      final f = File(d.path + '/bg_log.txt');
+      final old = f.existsSync() ? f.readAsStringSync() : '';
+      f.writeAsStringSync(old + '[' + DateTime.now().toIso8601String() + '] ' + line + '\n');
+    });
+  } catch (_) {}
+}
 
 // 通知插件（前台与后台隔离环境都要新建实例）
 final FlutterLocalNotificationsPlugin _notif = FlutterLocalNotificationsPlugin();
@@ -58,22 +69,40 @@ void callbackDispatcher() {
         await _notif.show(1, '己曜', '你有 $unread 条新消息，快来查看吧', const NotificationDetails(android: android));
       }
       await prefs.setInt('last_notified_unread', unread);
-    } catch (_) {
-      // 后台任务失败静默，下个周期重试
+    } catch (e) {
+      writeBgLog('后台轮询异常: ' + e.toString());
     }
     return true;
   });
 }
 
-/// App 启动时注册定时轮询（系统保证至少15分钟一次）
+/// 注册后台定时轮询（系统保证至少15分钟一次）。逐段保护，失败不影响App
 Future<void> initBackgroundPolling() async {
   try {
-    await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('bg_notify') == false) return; // 用户在设置里关闭了提醒
+  } catch (_) {}
+  try {
+    await Workmanager().initialize(callbackDispatcher);
+  } catch (e) {
+    writeBgLog('workmanager initialize失败: ' + e.toString());
+    return;
+  }
+  try {
     await Workmanager().registerPeriodicTask(
       kPollTaskName,
       kPollTaskName,
       frequency: const Duration(minutes: 15),
       existingWorkPolicy: ExistingWorkPolicy.keep,
     );
+  } catch (e) {
+    writeBgLog('workmanager register失败: ' + e.toString());
+  }
+}
+
+/// 关闭后台提醒
+Future<void> disableBackgroundPolling() async {
+  try {
+    await Workmanager().cancelByUniqueName(kPollTaskName);
   } catch (_) {}
 }

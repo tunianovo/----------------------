@@ -1,10 +1,14 @@
 // ============================================================
-// 己曜 - 技能共享平台手机客户端入口
+// 己曜 - 手机客户端入口（v1.1.1 启动加固版）
+// 任何未捕获异常都会写入本机 crash_log.txt，设置页可查看
 // ============================================================
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -20,20 +24,50 @@ final Api api = Api();
 final ValueNotifier<UserAccount?> session = ValueNotifier(null);
 
 /// 当前 App 版本（与 pubspec.yaml 保持一致；用于更新检查）
-const String kAppVersion = '1.1.0';
+const String kAppVersion = '1.1.1';
+
+/// 崩溃日志写入（同步写，闪退前尽量落盘）
+void writeCrashLog(String what, Object error, StackTrace? st) {
+  try {
+    final dir = Directory.systemTemp;
+    getApplicationDocumentsDirectory().then((doc) {
+      final f = File('${doc.path}/crash_log.txt');
+      final line = '[${DateTime.now().toIso8601String()}] $what\n$error\n${st ?? ''}\n----\n';
+      final old = f.existsSync() ? f.readAsStringSync() : '';
+      f.writeAsStringSync((old + line).substring(old.length + line.length > 100000 ? old.length : 0));
+    }).catchError((_) {});
+  } catch (_) {}
+}
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final s = await SessionStore.load();
-  if (s != null) api.token = s['token'] as String?;
-  session.value = s == null ? null : UserAccount.fromJson(s['user']);
-  // 登录过期：清会话回登录页
-  api.onUnauthorized = () async {
-    await SessionStore.clear();
-    api.token = null;
-    session.value = null;
-  };
-  runApp(const JsgxApp());
+  await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      writeCrashLog('FlutterError', details.exception, details.stack);
+    };
+
+    final s = await SessionStore.load();
+    if (s != null) api.token = s['token'] as String?;
+    session.value = s == null ? null : UserAccount.fromJson(s['user']);
+    api.onUnauthorized = () async {
+      await SessionStore.clear();
+      api.token = null;
+      session.value = null;
+    };
+
+    runApp(const JsgxApp());
+
+    // 后台消息提醒：延后到界面起来之后，且逐段保护，绝不影响启动
+    if (session.value != null) {
+      Timer(const Duration(seconds: 5), () {
+        initBackgroundPolling().catchError((_) {});
+      });
+    }
+  }, (error, stack) {
+    writeCrashLog('ZoneError', error, stack);
+  });
 }
 
 class JsgxApp extends StatelessWidget {
@@ -74,12 +108,13 @@ class _AppGateState extends State<AppGate> {
 
   Future<void> _restore() async {
     if (api.token == null) {
-      setState(() => restoring = false);
+      if (mounted) setState(() => restoring = false);
       return;
     }
     try {
       final u = await api.me();
       session.value = u;
+      if (!mounted) return;
       setState(() => restoring = false);
       _startHeartbeat();
       _checkUpdate(context);
@@ -87,7 +122,7 @@ class _AppGateState extends State<AppGate> {
       await SessionStore.clear();
       api.token = null;
       session.value = null;
-      setState(() => restoring = false);
+      if (mounted) setState(() => restoring = false);
     }
   }
 
@@ -164,6 +199,10 @@ class _AppGateState extends State<AppGate> {
     await SessionStore.save(u, api.token!);
     session.value = u;
     _startHeartbeat();
+    // 登录后延迟注册后台消息轮询（独立保护）
+    Timer(const Duration(seconds: 5), () {
+      initBackgroundPolling().catchError((_) {});
+    });
   }
 
   @override

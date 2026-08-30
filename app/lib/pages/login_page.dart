@@ -69,20 +69,9 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => error = '请输入账号和密码');
       return;
     }
-    if (isRegister) {
-      final phone = _phone.text.trim();
-      if (!RegExp(r'^1\d{10}$').hasMatch(phone)) {
-        setState(() => error = '请输入正确的11位手机号');
-        return;
-      }
-      if (_smsCode.text.trim().isEmpty) {
-        setState(() => error = '请获取并填写短信验证码');
-        return;
-      }
-      if (pwd.length < 6) {
-        setState(() => error = '密码至少 6 位');
-        return;
-      }
+    if (isRegister && pwd.length < 6) {
+      setState(() => error = '密码至少 6 位');
+      return;
     }
     setState(() { busy = true; error = null; });
     try {
@@ -162,38 +151,6 @@ class _LoginPageState extends State<LoginPage> {
                     onSubmitted: (_) => isRegister ? null : _submit(),
                   ),
                   if (isRegister) ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _phone,
-                      keyboardType: TextInputType.phone,
-                      maxLength: 11,
-                      decoration: const InputDecoration(hintText: '手机号（用于注册和找回）', prefixIcon: Icon(Icons.phone_outlined), counterText: ''),
-                      textInputAction: TextInputAction.next,
-                    ),
-                    const SizedBox(height: 12),
-                    Row(children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _smsCode,
-                          keyboardType: TextInputType.number,
-                          maxLength: 6,
-                          decoration: const InputDecoration(hintText: '短信验证码', prefixIcon: Icon(Icons.verified_outlined), counterText: ''),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      OutlinedButton(
-                        onPressed: (sendingCode || codeCountdown > 0) ? null : _sendCode,
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(110, 50),
-                          side: const BorderSide(color: kPrimary),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: Text(
-                          sendingCode ? '发送中…' : (codeCountdown > 0 ? '${codeCountdown}s' : '获取验证码'),
-                          style: const TextStyle(fontSize: 13, color: kPrimary),
-                        ),
-                      ),
-                    ]),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _realName,
