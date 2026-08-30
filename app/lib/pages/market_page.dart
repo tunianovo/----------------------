@@ -7,6 +7,7 @@ import '../main.dart';
 import '../cache.dart';
 import '../theme.dart';
 import 'chat_page.dart';
+import 'projects_page.dart';
 
 class MarketPage extends StatefulWidget {
   final UserAccount me;
@@ -25,6 +26,7 @@ class _MarketPageState extends State<MarketPage> {
   String viewMode = 'services'; // services 服务市场 / tasks 需求大厅
   List<TaskItem>? taskItems;
   String? taskError;
+  List<ProjectItem>? cachedProjects;
 
   @override
   void initState() {
@@ -33,6 +35,8 @@ class _MarketPageState extends State<MarketPage> {
   }
 
   Future<void> _load() async {
+    // 共创项目数据（供搜索联想）
+    api.projects().then((ps) { if (mounted) setState(() => cachedProjects = ps); }).catchError((_) {});
     // 本地缓存先渲染（秒开），网络刷新后替换
     if (items == null) {
       final cached = await LocalCache.get('services');
@@ -61,6 +65,11 @@ class _MarketPageState extends State<MarketPage> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _PublishSheet(onDone: _load),
     );
+  }
+
+  List<ProjectItem> get _matchedProjects {
+    if (keyword.isEmpty) return [];
+    return (cachedProjects ?? []).where((p) => p.name.contains(keyword) || p.desc.contains(keyword) || p.needSkills.any((s) => s.contains(keyword))).toList();
   }
 
   List<ServiceItem> get _filtered {
@@ -285,6 +294,19 @@ class _MarketPageState extends State<MarketPage> {
             ),
           ),
         ),
+        if (_matchedProjects.isNotEmpty)
+          SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('相关共创项目', style: TextStyle(fontSize: 12, color: Colors.black38)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 6, children: _matchedProjects.take(4).map((pj) => ActionChip(
+                  avatar: const Icon(Icons.groups, size: 15, color: kPrimary),
+                  label: Text(pj.name, style: const TextStyle(fontSize: 11)),
+                  backgroundColor: const Color(0xFFF0F4FF),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProjectsPage(me: widget.me))),
+                )).toList()),
+          ])))
+        else if (false)
+          const SliverToBoxAdapter(child: SizedBox())
         if (error != null)
           SliverToBoxAdapter(
             child: Padding(

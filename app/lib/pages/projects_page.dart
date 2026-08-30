@@ -29,6 +29,61 @@ class _ProjectsPageState extends State<ProjectsPage> with AutomaticKeepAliveClie
     _load();
   }
 
+  Future<void> _publishProject() async {
+    final nameCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    final budgetCtrl = TextEditingController();
+    final skillsCtrl = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 14),
+          const Text('发起共创项目', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 14),
+          TextField(controller: nameCtrl, decoration: const InputDecoration(hintText: '项目名称')),
+          const SizedBox(height: 10),
+          TextField(controller: descCtrl, maxLines: 3, decoration: const InputDecoration(hintText: '项目介绍：做什么、怎么分工、收益分配')),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: TextField(controller: budgetCtrl, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(hintText: '总预算（元）', prefixIcon: Icon(Icons.payments_outlined)))),
+            const SizedBox(width: 10),
+            Expanded(child: TextField(controller: skillsCtrl,
+                decoration: const InputDecoration(hintText: '需要技能，逗号分隔'))),
+          ]),
+          const SizedBox(height: 8),
+          const Text('提示：填写的需求技能会用于向匹配的用户推荐你的项目', style: TextStyle(fontSize: 11, color: Colors.black38)),
+          const SizedBox(height: 14),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('发布项目')),
+          const SizedBox(height: 6),
+        ]),
+      ))),
+    );
+    if (ok != true || nameCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty) return;
+    try {
+      await api.createProject(
+        name: nameCtrl.text.trim(),
+        desc: descCtrl.text.trim(),
+        budget: double.tryParse(budgetCtrl.text.trim()) ?? 0,
+        needSkills: skillsCtrl.text.split(RegExp('[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('项目已发布！系统会向技能匹配的用户推荐'),
+          backgroundColor: kPrimary, behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message),
+          backgroundColor: const Color(0xFFE5484D), behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    }
+  }
+
   Future<void> _load() async {
     if (items == null) {
       final cached = await LocalCache.get('projects');
@@ -77,6 +132,13 @@ class _ProjectsPageState extends State<ProjectsPage> with AutomaticKeepAliveClie
     super.build(context);
     return Scaffold(
       appBar: AppBar(title: const Text('共创项目')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _publishProject,
+        backgroundColor: kPrimary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('发起共创'),
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         color: kPrimary,
@@ -128,6 +190,38 @@ class _ProjectCard extends StatelessWidget {
   final VoidCallback onJoin;
   const _ProjectCard({required this.project, required this.me, required this.joining, required this.onJoin});
 
+  void _showRecommend(BuildContext context, ProjectItem p) {
+    showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.all(20), child: FutureBuilder<List<UserAccount>>(
+          future: api.recommendFor(p.id),
+          builder: (ctx, snap) {
+            if (!snap.hasData) return const SizedBox(height: 160, child: Center(child: CircularProgressIndicator()));
+            final list = snap.data!;
+            return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 14),
+              Text('推荐人选（' + list.length.toString() + '人，按技能匹配度排序）', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 10),
+              if (list.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Center(child: Text('暂无技能匹配的用户。发布的用户越多，推荐越精准', style: TextStyle(fontSize: 12, color: Colors.black38), textAlign: TextAlign.center))),
+              ...list.map((u) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: UserAvatar(url: u.avatar, name: u.displayName, radius: 20),
+                    title: Text(u.displayName + (u.online ? '  ●在线' : ''), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                    subtitle: Text('标签: ' + (u.skillTag.isEmpty ? '无' : u.skillTag), style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis),
+                    trailing: OutlinedButton(
+                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), side: const BorderSide(color: kPrimary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: u.id, peerName: u.displayName, meId: me.id))),
+                      child: const Text('聊一聊', style: TextStyle(fontSize: 12, color: kPrimary)),
+                    ),
+                  )),
+              const SizedBox(height: 8),
+            ]);
+          },
+        ))));
+  }
+
   @override
   Widget build(BuildContext context) {
     final isCreator = project.creatorId == me.id;
@@ -165,6 +259,13 @@ class _ProjectCard extends StatelessWidget {
                 style: const TextStyle(color: kPrimary, fontSize: 15, fontWeight: FontWeight.w800)),
           ]),
           const SizedBox(height: 14),
+          if (isCreator)
+            Padding(padding: const EdgeInsets.only(bottom: 10), child: SizedBox(width: double.infinity, child: OutlinedButton.icon(
+              onPressed: () => _showRecommend(context, project),
+              icon: const Icon(Icons.auto_awesome, size: 16),
+              label: const Text('查看推荐人选（按技能匹配）'),
+            ))),
+          const SizedBox(height: 2),
           Row(children: [
             if (!isCreator)
               Expanded(child: FilledButton.icon(

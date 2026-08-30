@@ -63,8 +63,8 @@ jobs:
       - name: Create/Update release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: app-v1.0.4
-          name: 己曜 App v1.0.4
+          tag_name: app-v1.1.0
+          name: 己曜 App v1.1.0
           body: |
             己曜安卓客户端 v1.0.4
             - 后台消息手机通知

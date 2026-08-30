@@ -37,6 +37,8 @@ class UserAccount {
     this.avatar,
     this.online = false,
     this.lastSeen,
+    this.bio = '',
+    this.discoverable = 1,
   });
 
   factory UserAccount.fromJson(dynamic j) => UserAccount(
@@ -49,6 +51,8 @@ class UserAccount {
         avatar: j['avatar'] as String?,
         online: j['online'] == true,
         lastSeen: (j['last_seen'] as num?)?.toInt(),
+        bio: (j['bio'] ?? '') as String,
+        discoverable: (j['discoverable'] as num?)?.toInt() ?? 1,
       );
 
   Map<String, dynamic> toJson() => {
@@ -235,6 +239,50 @@ class TaskItem {
       );
 }
 
+class GroupInfo {
+  final int groupId;
+  final String name;
+  final int memberCount;
+  GroupInfo({required this.groupId, required this.name, required this.memberCount});
+  factory GroupInfo.fromJson(dynamic j) => GroupInfo(
+        groupId: (j['group_id'] as num).toInt(),
+        name: (j['name'] ?? '群聊') as String,
+        memberCount: (j['member_count'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class GroupInvite {
+  final int inviteId;
+  final int groupId;
+  final String name;
+  final String inviterName;
+  GroupInvite({required this.inviteId, required this.groupId, required this.name, required this.inviterName});
+  factory GroupInvite.fromJson(dynamic j) => GroupInvite(
+        inviteId: (j['invite_id'] as num).toInt(),
+        groupId: (j['group_id'] as num).toInt(),
+        name: (j['name'] ?? '') as String,
+        inviterName: (j['inviter_name'] ?? '用户') as String,
+      );
+}
+
+class GroupMessage {
+  final int id;
+  final int groupId;
+  final int senderId;
+  final String senderName;
+  final String content;
+  final int createTime;
+  GroupMessage({required this.id, required this.groupId, required this.senderId, required this.senderName, required this.content, required this.createTime});
+  factory GroupMessage.fromJson(dynamic j) => GroupMessage(
+        id: (j['id'] as num).toInt(),
+        groupId: (j['group_id'] as num).toInt(),
+        senderId: (j['sender_id'] as num).toInt(),
+        senderName: (j['sender_name'] ?? '用户') as String,
+        content: (j['content'] ?? '') as String,
+        createTime: (j['create_time'] as num).toInt(),
+      );
+}
+
 class OrderItem {
   final int id;  final String? serviceTitle;
   final String? serviceCover;
@@ -246,6 +294,10 @@ class OrderItem {
   final double price;
   final int status; // 0 待接单 1 进行中 2 已完成 3 已取消
   final int createdAt;
+  final String? snapshotDesc;
+  final String? snapshotCover;
+  final String? snapshotType;
+  final String? snapshotSub;
   OrderItem({
     required this.id,
     this.serviceTitle,
@@ -269,6 +321,10 @@ class OrderItem {
         buyerName: (j['buyer_name'] ?? '用户') as String,
         sellerName: (j['seller_name'] ?? '用户') as String,
         amBuyer: j['am_buyer'] == true,
+        snapshotDesc: j['snapshot_desc'] as String?,
+        snapshotCover: j['snapshot_cover'] as String?,
+        snapshotType: j['snapshot_type'] as String?,
+        snapshotSub: j['snapshot_sub'] as String?,
         price: (j['order_price'] as num?)?.toDouble() ?? 0,
         status: (j['order_status'] as num?)?.toInt() ?? 0,
         createdAt: (j['created_at'] as num?)?.toInt() ?? 0,
@@ -461,6 +517,64 @@ class Api {
 
   Future<void> takeTask(int taskId) async {
     await _send('POST', '/tasks/take', body: {'task_id': taskId});
+  }
+
+  // ---- 订单取消 ----
+  Future<void> cancelOrder(int orderId) async {
+    await _send('POST', '/orders/cancel', body: {'order_id': orderId});
+  }
+
+  // ---- 个人设置 ----
+  Future<void> saveSettings({bool? discoverable, String? skillTag, String? bio, String? realName}) async {
+    await _send('PUT', '/settings', body: {
+      if (discoverable != null) 'discoverable': discoverable,
+      if (skillTag != null) 'skill_tag': skillTag,
+      if (bio != null) 'bio': bio,
+      if (realName != null) 'real_name': realName,
+    });
+  }
+
+  // ---- 群聊 ----
+  List<GroupInvite> _lastInvites = [];
+  List<GroupInvite> get pendingInvites => _lastInvites;
+
+  Future<List<GroupInfo>> myGroups() async {
+    final d = await _send('GET', '/groups/mine');
+    final joined = ((d['joined'] ?? []) as List).map(GroupInfo.fromJson).toList();
+    _lastInvites = ((d['invites'] ?? []) as List).map(GroupInvite.fromJson).toList();
+    return joined;
+  }
+
+  Future<void> createGroup(String name, List<int> memberIds) async {
+    await _send('POST', '/groups', body: {'name': name, 'member_ids': memberIds});
+  }
+
+  Future<void> handleGroupInvite(int inviteId, bool accept) async {
+    await _send('POST', '/groups/invites/handle', body: {'invite_id': inviteId, 'accept': accept});
+  }
+
+  Future<List<GroupMessage>> groupHistory(int groupId) async {
+    final d = await _send('GET', '/group/history', query: {'group_id': '$groupId'});
+    return (d as List).map(GroupMessage.fromJson).toList();
+  }
+
+  Future<void> groupSend(int groupId, String content) async {
+    await _send('POST', '/group/send', body: {'group_id': groupId, 'content': content});
+  }
+
+  // ---- 共创发布与推荐 ----
+  Future<void> createProject({required String name, required String desc, double budget = 0, List<String> needSkills = const []}) async {
+    await _send('POST', '/projects', body: {
+      'project_name': name,
+      'project_desc': desc,
+      'total_budget': budget,
+      'need_skills': needSkills,
+    });
+  }
+
+  Future<List<UserAccount>> recommendFor(int projectId) async {
+    final d = await _send('GET', '/projects/recommend', query: {'project_id': '$projectId'});
+    return (d as List).map(UserAccount.fromJson).toList();
   }
 
   // ---- 短信验证码 ----

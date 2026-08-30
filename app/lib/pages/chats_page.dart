@@ -141,15 +141,7 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
           IconButton(onPressed: _newChat, icon: const Icon(Icons.add_comment_outlined), tooltip: '按账号发起聊天'),
         ],
       ),
-      body: chatsView == 'msgs' ? RefreshIndicator(
-        onRefresh: () => _load(),
-        color: kPrimary,
-        child: (items == null && loadingCache) && error == null
-            ? const Center(child: CircularProgressIndicator())
-            : error != null
-                ? ListView(children: [Padding(padding: const EdgeInsets.all(48), child: Center(child: Text(error!, style: const TextStyle(color: Colors.black45))))])
-                : (items!.isEmpty ? _empty() : _list()),
-      ) : _usersView(),
+      body: chatsView == 'msgs' ? _msgsView() : _usersView(),
     );
   }
 
@@ -203,6 +195,122 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
               ),
       ),
     ]);
+  }
+
+  Widget _msgsView() {
+    return Column(children: [
+      if (invites.isNotEmpty)
+        Container(margin: const EdgeInsets.fromLTRB(12, 8, 12, 0), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(color: const Color(0xFFEDF2FF), borderRadius: BorderRadius.circular(12)),
+            child: Column(children: invites.map((inv) => Row(children: [
+              const Icon(Icons.group_add, size: 18, color: kPrimary),
+              const SizedBox(width: 8),
+              Expanded(child: Text(inv.inviterName + ' 邀请你加入「' + inv.name + '」', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+              TextButton(onPressed: () => _handleInvite(inv.inviteId, false), style: TextButton.styleFrom(visualDensity: VisualDensity.compact), child: const Text('拒绝', style: TextStyle(fontSize: 12, color: Colors.black45))),
+              TextButton(onPressed: () => _handleInvite(inv.inviteId, true), style: TextButton.styleFrom(visualDensity: VisualDensity.compact), child: const Text('同意', style: TextStyle(fontSize: 12, color: kPrimary))),
+            ])).toList())),
+      Expanded(child: RefreshIndicator(
+        onRefresh: () async { await _load(); await _loadGroups(); },
+        color: kPrimary,
+        child: items == null && error == null
+            ? const Center(child: CircularProgressIndicator())
+            : error != null
+                ? ListView(children: [Padding(padding: const EdgeInsets.all(48), child: Center(child: Text(error!, style: const TextStyle(color: Colors.black45))))])
+                : ((items!.isEmpty && groups.isEmpty) ? _empty() : _chatsWithGroups()),
+      )),
+    ]);
+  }
+
+  Widget _chatsWithGroups() {
+    return ListView(
+      children: [
+        if (groups.isNotEmpty) ...[
+          const Padding(padding: EdgeInsets.fromLTRB(16, 10, 16, 4), child: Text('我的群聊', style: TextStyle(fontSize: 12, color: Colors.black38))),
+          SizedBox(height: 84, child: ListView.separated(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: groups.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (_, i) {
+              final g = groups[i];
+              return InkWell(borderRadius: BorderRadius.circular(12), onTap: () async {
+                await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: -g.groupId, peerName: g.name, meId: widget.me.id)));
+                refresh();
+              }, child: SizedBox(width: 68, child: Column(children: [
+                CircleAvatar(radius: 26, backgroundColor: kPrimary.withOpacity(0.12), child: const Icon(Icons.group, color: kPrimary, size: 26)),
+                const SizedBox(height: 4),
+                Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+              ])));
+            })),
+        ],
+        if (groups.isNotEmpty) const Divider(),
+        _list(),
+      ],
+    );
+  }
+
+  void _showAddMenu() {
+    showModalBottomSheet(context: context, backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.person_add_alt_1, color: kPrimary),
+              title: const Text('按账号发起新聊天'), onTap: () { Navigator.pop(context); _newChat(); }),
+          ListTile(leading: const Icon(Icons.group_add, color: kPrimary),
+              title: const Text('发起群聊（邀请需对方同意）'), onTap: () { Navigator.pop(context); _createGroup(); }),
+        ]))));
+  }
+
+  Future<void> _createGroup() async {
+    await _loadUsers();
+    final nameCtrl = TextEditingController();
+    final selected = <int>{};
+    final ok = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) => SafeArea(child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(ctx).viewInsets.bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: nameCtrl, decoration: const InputDecoration(hintText: '群名称')),
+          const SizedBox(height: 10),
+          ConstrainedBox(constraints: const BoxConstraints(maxHeight: 320), child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: (allUsers ?? []).length,
+            itemBuilder: (_, i) {
+              final u = allUsers![i];
+              final sel = selected.contains(u.id);
+              return CheckboxListTile(
+                dense: true,
+                value: sel,
+                activeColor: kPrimary,
+                title: Text(u.displayName, style: const TextStyle(fontSize: 14)),
+                subtitle: Text(u.username, style: const TextStyle(fontSize: 11)),
+                onChanged: (v) { setSheet(() { if (v == true) { selected.add(u.id); } else { selected.remove(u.id); } }); },
+              );
+            },
+          )),
+          const SizedBox(height: 10),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text('创建并邀请（已选 ' + selected.length.toString() + ' 人）')),
+        ]),
+      ))),
+    );
+    if (ok != true || nameCtrl.text.trim().isEmpty || selected.isEmpty) return;
+    try {
+      await api.createGroup(nameCtrl.text.trim(), selected.toList());
+      if (!mounted) return;
+      _toast('群聊已创建，等待被邀请人同意', isError: false);
+      _loadGroups();
+    } on ApiException catch (e) {
+      _toast(e.message, isError: true);
+    }
+  }
+
+  Future<void> _handleInvite(int inviteId, bool accept) async {
+    try {
+      await api.handleGroupInvite(inviteId, accept);
+      _loadGroups();
+      _load(silent: true);
+      if (mounted && accept) _toast('已加入群聊', isError: false);
+    } on ApiException catch (e) {
+      _toast(e.message, isError: true);
+    }
   }
 
   Widget _empty() => ListView(children: [

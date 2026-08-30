@@ -20,7 +20,7 @@ final Api api = Api();
 final ValueNotifier<UserAccount?> session = ValueNotifier(null);
 
 /// 当前 App 版本（与 pubspec.yaml 保持一致；用于更新检查）
-const String kAppVersion = '1.0.4';
+const String kAppVersion = '1.1.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
