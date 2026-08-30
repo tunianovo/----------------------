@@ -1,5 +1,5 @@
 {
-  "version": "1.2.1",
+  "version": "1.2.2",
   "url": "https://azhegezhege.pages.dev/app/jsgx-app.apk",
-  "notes": "v1.2.1：消息页恢复发起群聊独立入口（＋旁边多了群聊图标）"
+  "notes": "v1.2.2：消息Tab红点角标+新消息横幅；修复发布服务500；启动申请通知权限；后台轮询日志"
 }
