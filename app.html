@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>下载App - 技能共享平台</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:#f5f6f8; color:#1a1a1a; min-height:100vh; }
+        .topbar { background:#fff; border-bottom:1px solid #e5e5e7; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; }
+        .brand { display:flex; align-items:center; gap:10px; font-size:17px; font-weight:700; text-decoration:none; color:#1a1a1a; }
+        .brand img { width:28px; height:28px; border-radius:6px; }
+        .back { color:#0071e7; text-decoration:none; font-size:14px; font-weight:500; }
+        .hero { max-width:880px; margin:0 auto; padding:64px 24px 40px; text-align:center; }
+        .hero h1 { font-size:36px; font-weight:700; letter-spacing:-0.5px; }
+        .hero h1 span { color:#0071e7; }
+        .hero p { color:#6e6e73; font-size:16px; margin-top:12px; line-height:1.6; }
+        .cards { max-width:880px; margin:24px auto 0; padding:0 24px; display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+        @media (max-width:720px) { .cards { grid-template-columns:1fr; } .hero h1 { font-size:28px; } }
+        .card { background:#fff; border:1px solid #e5e5e7; border-radius:20px; padding:36px 32px; text-align:left; }
+        .card .os { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+        .card .os .icon { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; color:#fff; }
+        .card .os .icon.android { background:linear-gradient(135deg,#34a853,#0f9d58); }
+        .card .os .icon.ios { background:linear-gradient(135deg,#1d1d1f,#48484a); }
+        .card .os h3 { font-size:19px; font-weight:700; }
+        .card .os small { color:#86868b; font-size:12px; display:block; margin-top:2px; }
+        .btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px; border-radius:14px; font-size:15px; font-weight:600; text-decoration:none; transition:all .2s; border:none; cursor:pointer; }
+        .btn-primary { background:#0071e7; color:#fff; }
+        .btn-primary:hover { background:#005bb8; }
+        .btn-ghost { background:#f5f6f8; color:#1a1a1a; margin-top:10px; }
+        .btn-ghost:hover { background:#e8e8ed; }
+        .card ul { margin-top:20px; list-style:none; }
+        .card li { font-size:13px; color:#6e6e73; padding:6px 0; display:flex; gap:8px; align-items:flex-start; line-height:1.5; }
+        .card li::before { content:"✓"; color:#34a853; font-weight:700; flex-shrink:0; }
+        .meta { max-width:880px; margin:28px auto 60px; padding:0 24px; }
+        .meta .box { background:#fff; border:1px solid #e5e5e7; border-radius:16px; padding:22px 26px; font-size:13px; color:#6e6e73; line-height:1.9; }
+        .meta .box b { color:#1a1a1a; }
+        .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px; }
+        @media (max-width:720px) { .steps { grid-template-columns:1fr; } }
+        .step { background:#f5f6f8; border-radius:12px; padding:14px 16px; font-size:13px; color:#3a3a3c; }
+        .step b { display:block; color:#0071e7; font-size:12px; margin-bottom:4px; }
+        .footer { text-align:center; color:#86868b; font-size:12px; padding:24px; border-top:1px solid #e5e5e7; background:#fff; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <a class="brand" href="index.html"><img src="images/logo.png" alt="logo">技能共享平台</a>
+        <a class="back" href="index.html">← 返回网站</a>
+    </div>
+
+    <div class="hero">
+        <h1>随时随地，<span>技能共享</span></h1>
+        <p>安装手机客户端，聊消息更及时、在线状态实时可见。<br>与网页版账号数据完全互通。</p>
+    </div>
+
+    <div class="cards">
+        <div class="card">
+            <div class="os">
+                <div class="icon android">🤖</div>
+                <div>
+                    <h3>Android 安卓版</h3>
+                    <small>Android 8.0 及以上 · 约 22MB</small>
+                </div>
+            </div>
+            <a class="btn btn-primary" href="app/jsgx-app.apk" download>⬇️ 下载安卓安装包（APK）</a>
+            <ul>
+                <li>账号登录注册、服务市场浏览与下单</li>
+                <li>私信聊天，对方在线状态实时显示</li>
+                <li>与网页版同一套账号，数据互通</li>
+            </ul>
+        </div>
+        <div class="card">
+            <div class="os">
+                <div class="icon ios"></div>
+                <div>
+                    <h3>iPhone / iPad</h3>
+                    <small>iOS 12 及以上 · 无需安装</small>
+                </div>
+            </div>
+            <a class="btn btn-primary" href="index.html">🌐 打开网页版</a>
+            <div class="btn btn-ghost" onclick="showIosGuide()">📋 查看「添加到主屏幕」教程</div>
+            <ul>
+                <li>苹果机制限制，iPhone 暂以网页版提供服务</li>
+                <li>添加到主屏幕后全屏运行，体验接近 App</li>
+                <li>聊天、订单、账号与安卓 App 完全互通</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="meta">
+        <div class="box">
+            <b>安卓安装说明</b>（首次安装需要允许「安装未知来源应用」）：
+            <div class="steps">
+                <div class="step"><b>第 1 步</b>点击上方按钮下载 APK 文件</div>
+                <div class="step"><b>第 2 步</b>打开下载的文件，手机提示时选择「允许/仍要安装」</div>
+                <div class="step"><b>第 3 步</b>安装完成，打开「技能共享」登录即可</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">© 2026 技能共享平台 · 大学生创新创业训练计划项目</div>
+
+    <div id="iosGuide" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:99; align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this)this.style.display='none'">
+        <div style="background:#fff; border-radius:20px; max-width:420px; width:100%; padding:28px;">
+            <h3 style="font-size:18px; margin-bottom:16px;">iPhone 添加到主屏幕</h3>
+            <div style="font-size:14px; color:#3a3a3c; line-height:2.2;">
+                1. 用 <b>Safari 浏览器</b>打开本站首页<br>
+                2. 点击底部「分享」按钮 <b>⎋</b><br>
+                3. 选择「<b>添加到主屏幕</b>」<br>
+                4. 点击「添加」，桌面出现网站图标<br>
+                5. 从图标打开即全屏运行，像 App 一样
+            </div>
+            <button class="btn btn-primary" style="margin-top:20px;" onclick="document.getElementById('iosGuide').style.display='none'">知道了</button>
+        </div>
+    </div>
+    <script>
+        function showIosGuide() { var g = document.getElementById('iosGuide'); g.style.display = 'flex'; }
+    </script>
+</body>
+</html>

@@ -1,0 +1,328 @@
+// ============================================================
+// API 客户端：对接 Cloudflare Worker 后端（与网站同一套接口）
+// ============================================================
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+const String kApiBase = 'https://plain-bird-80fa.pukejan.workers.dev';
+const String kSiteBase = 'https://azhegezhege.pages.dev';
+
+class ApiException implements Exception {
+  final String message;
+  ApiException(this.message);
+  @override
+  String toString() => message;
+}
+
+// ---------- 数据模型 ----------
+
+class UserAccount {
+  final int id;
+  final String username;
+  final String realName;
+  final int userType; // 0 客户 / 1 技能提供者
+  final String skillTag;
+  final String phone;
+  final String? avatar;
+  final bool online;
+  final int? lastSeen;
+  UserAccount({
+    required this.id,
+    required this.username,
+    required this.realName,
+    required this.userType,
+    this.skillTag = '',
+    this.phone = '',
+    this.avatar,
+    this.online = false,
+    this.lastSeen,
+  });
+
+  factory UserAccount.fromJson(dynamic j) => UserAccount(
+        id: (j['id'] as num).toInt(),
+        username: (j['username'] ?? '') as String,
+        realName: (j['real_name'] ?? j['username'] ?? '用户') as String,
+        userType: (j['user_type'] as num?)?.toInt() ?? 0,
+        skillTag: (j['skill_tag'] ?? '') as String,
+        phone: (j['phone'] ?? '') as String,
+        avatar: j['avatar'] as String?,
+        online: j['online'] == true,
+        lastSeen: (j['last_seen'] as num?)?.toInt(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'username': username,
+        'real_name': realName,
+        'user_type': userType,
+        'skill_tag': skillTag,
+        'phone': phone,
+        'avatar': avatar,
+      };
+
+  String get displayName => realName.isNotEmpty ? realName : username;
+}
+
+class Conversation {
+  final int peerId;
+  final String name;
+  final String? avatar;
+  final bool online;
+  final String lastMsg;
+  final int lastTime;
+  final int unread;
+  Conversation({
+    required this.peerId,
+    required this.name,
+    this.avatar,
+    required this.online,
+    required this.lastMsg,
+    required this.lastTime,
+    required this.unread,
+  });
+
+  factory Conversation.fromJson(dynamic j) => Conversation(
+        peerId: (j['peer_id'] as num).toInt(),
+        name: (j['name'] ?? '用户') as String,
+        avatar: j['avatar'] as String?,
+        online: j['online'] == true,
+        lastMsg: (j['last_msg'] ?? '') as String,
+        lastTime: (j['last_time'] as num?)?.toInt() ?? 0,
+        unread: (j['unread'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class ChatMessage {
+  final int id;
+  final int senderId;
+  final int receiverId;
+  final String content;
+  final int createTime;
+  final bool isRead;
+  ChatMessage({
+    required this.id,
+    required this.senderId,
+    required this.receiverId,
+    required this.content,
+    required this.createTime,
+    required this.isRead,
+  });
+
+  factory ChatMessage.fromJson(dynamic j) => ChatMessage(
+        id: (j['id'] as num).toInt(),
+        senderId: (j['sender_id'] as num).toInt(),
+        receiverId: (j['receiver_id'] as num).toInt(),
+        content: (j['content'] ?? '') as String,
+        createTime: (j['create_time'] as num).toInt(),
+        isRead: (j['is_read'] as num?)?.toInt() == 1,
+      );
+}
+
+class ServiceItem {
+  final int id;
+  final int userId;
+  final String sellerName;
+  final bool sellerOnline;
+  final String title;
+  final String desc;
+  final double price;
+  final String serviceType;
+  final String subCategory;
+  final List<String> tags;
+  final String cover; // 网站静态图相对路径
+  ServiceItem({
+    required this.id,
+    required this.userId,
+    required this.sellerName,
+    required this.sellerOnline,
+    required this.title,
+    required this.desc,
+    required this.price,
+    required this.serviceType,
+    required this.subCategory,
+    required this.tags,
+    required this.cover,
+  });
+
+  factory ServiceItem.fromJson(dynamic j) => ServiceItem(
+        id: (j['id'] as num).toInt(),
+        userId: (j['user_id'] as num).toInt(),
+        sellerName: (j['seller_name'] ?? '用户') as String,
+        sellerOnline: j['online'] == true,
+        title: (j['title'] ?? '') as String,
+        desc: (j['service_desc'] ?? '') as String,
+        price: (j['price'] as num?)?.toDouble() ?? 0,
+        serviceType: (j['service_type'] ?? '') as String,
+        subCategory: (j['sub_category'] ?? '') as String,
+        tags: ((j['tags'] as List?) ?? []).map((e) => e.toString()).toList(),
+        cover: (j['cover'] ?? '') as String,
+      );
+
+  String get coverUrl => cover.startsWith('http') ? cover : '$kSiteBase/$cover';
+}
+
+class OrderItem {
+  final int id;
+  final String? serviceTitle;
+  final String? serviceCover;
+  final int buyerId;
+  final int sellerId;
+  final String buyerName;
+  final String sellerName;
+  final bool amBuyer;
+  final double price;
+  final int status; // 0 待接单 1 进行中 2 已完成 3 已取消
+  final int createdAt;
+  OrderItem({
+    required this.id,
+    this.serviceTitle,
+    this.serviceCover,
+    required this.buyerId,
+    required this.sellerId,
+    required this.buyerName,
+    required this.sellerName,
+    required this.amBuyer,
+    required this.price,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory OrderItem.fromJson(dynamic j) => OrderItem(
+        id: (j['id'] as num).toInt(),
+        serviceTitle: j['service_title'] as String?,
+        serviceCover: j['service_cover'] as String?,
+        buyerId: (j['buyer_id'] as num).toInt(),
+        sellerId: (j['seller_id'] as num).toInt(),
+        buyerName: (j['buyer_name'] ?? '用户') as String,
+        sellerName: (j['seller_name'] ?? '用户') as String,
+        amBuyer: j['am_buyer'] == true,
+        price: (j['order_price'] as num?)?.toDouble() ?? 0,
+        status: (j['order_status'] as num?)?.toInt() ?? 0,
+        createdAt: (j['created_at'] as num?)?.toInt() ?? 0,
+      );
+
+  String get statusText => ['待接单', '进行中', '已完成', '已取消'][status.clamp(0, 3)];
+  String get peerName => amBuyer ? sellerName : buyerName;
+  int get peerId => amBuyer ? sellerId : buyerId;
+}
+
+// ---------- API 客户端 ----------
+
+class Api {
+  String? token;
+
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+
+  Future<dynamic> _send(String method, String path, {Map<String, String>? query, Map<String, dynamic>? body}) async {
+    final uri = Uri.parse('$kApiBase$path').replace(queryParameters: query);
+    late http.Response res;
+    try {
+      if (method == 'POST') {
+        res = await http.post(uri, headers: _headers, body: jsonEncode(body ?? {}));
+      } else {
+        res = await http.get(uri, headers: _headers);
+      }
+    } catch (e) {
+      throw ApiException('网络连接失败，请检查网络');
+    }
+    if (res.statusCode == 401) throw ApiException('登录已过期，请重新登录');
+    dynamic data;
+    try {
+      data = jsonDecode(utf8.decode(res.bodyBytes));
+    } catch (_) {
+      throw ApiException('服务器返回异常 (${res.statusCode})');
+    }
+    if (res.statusCode >= 400) {
+      final msg = data is Map && data['error'] != null ? data['error'] as String : '请求失败 (${res.statusCode})';
+      throw ApiException(msg);
+    }
+    return data;
+  }
+
+  // ---- 认证 ----
+  Future<UserAccount> register({
+    required String username,
+    required String password,
+    String realName = '',
+    int userType = 0,
+    String skillTag = '',
+    String phone = '',
+  }) async {
+    final d = await _send('POST', '/register', body: {
+      'username': username,
+      'password': password,
+      'real_name': realName,
+      'user_type': userType,
+      'skill_tag': skillTag,
+      'phone': phone,
+    });
+    token = d['token'] as String?;
+    return UserAccount.fromJson(d['user']);
+  }
+
+  Future<UserAccount> login({required String username, required String password}) async {
+    final d = await _send('POST', '/login', body: {'username': username, 'password': password});
+    token = d['token'] as String?;
+    return UserAccount.fromJson(d['user']);
+  }
+
+  Future<UserAccount> me() async {
+    final d = await _send('GET', '/me');
+    return UserAccount.fromJson(d);
+  }
+
+  Future<void> heartbeat() async {
+    await _send('POST', '/heartbeat');
+  }
+
+  // ---- 用户 ----
+  Future<List<UserAccount>> usersByIds(List<int> ids) async {
+    if (ids.isEmpty) return [];
+    final d = await _send('GET', '/users', query: {'ids': ids.join(',')});
+    return (d as List).map(UserAccount.fromJson).toList();
+  }
+
+  Future<UserAccount?> userByUsername(String username) async {
+    final d = await _send('GET', '/users', query: {'username': username});
+    final list = (d as List).map(UserAccount.fromJson).toList();
+    return list.isEmpty ? null : list.first;
+  }
+
+  // ---- 聊天 ----
+  Future<List<Conversation>> conversations() async {
+    final d = await _send('GET', '/conversations');
+    return (d as List).map(Conversation.fromJson).toList();
+  }
+
+  Future<List<ChatMessage>> history(int peerId) async {
+    final d = await _send('GET', '/history', query: {'peer_id': '$peerId'});
+    return (d as List).map(ChatMessage.fromJson).toList();
+  }
+
+  Future<void> send(int receiverId, String content) async {
+    await _send('POST', '/send', body: {'receiver_id': receiverId, 'content': content});
+  }
+
+  Future<void> markRead(int peerId) async {
+    await _send('POST', '/read', body: {'peer_id': peerId});
+  }
+
+  // ---- 服务市场 ----
+  Future<List<ServiceItem>> services() async {
+    final d = await _send('GET', '/services');
+    return (d as List).map(ServiceItem.fromJson).toList();
+  }
+
+  // ---- 订单 ----
+  Future<void> createOrder(int serviceId) async {
+    await _send('POST', '/orders', body: {'service_id': serviceId});
+  }
+
+  Future<List<OrderItem>> orders() async {
+    final d = await _send('GET', '/orders');
+    return (d as List).map(OrderItem.fromJson).toList();
+  }
+}

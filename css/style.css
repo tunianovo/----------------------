@@ -429,6 +429,8 @@ img { max-width: 100%; display: block; }
 .msg-item-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; display: flex; justify-content: space-between; align-items: center; }
 .msg-item-time { font-size: 11px; color: var(--text-tertiary); font-weight: 400; flex-shrink: 0; margin-left: 8px; }
 .msg-item-preview { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.online-dot { width: 8px; height: 8px; background: #34c759; border-radius: 50%; display: inline-block; margin-left: 6px; flex-shrink: 0; }
+.chat-online-tag { font-size: 11px; color: #34c759; margin-left: 8px; font-weight: 500; }
 .msg-item-badge { position: absolute; top: 12px; right: 16px; background: var(--accent3); color: #fff; font-size: 10px; font-weight: 600; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
 .msg-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-tertiary); padding: 40px; text-align: center; }
 .msg-empty .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }

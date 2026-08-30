@@ -37,6 +37,8 @@ async function verifyPassword(password, stored) {
 const newToken = () => crypto.randomUUID() + crypto.randomUUID().slice(0, 12);
 
 // 只返回对外可见的用户字段（绝不返回密码哈希/token）
+// online：3分钟内有心跳即在线；last_seen 为最近活跃时间
+const ONLINE_WINDOW = 3 * 60 * 1000;
 const publicUser = (u) => ({
   id: Number(u.id),
   username: u.username,
@@ -45,7 +47,9 @@ const publicUser = (u) => ({
   skill_tag: u.skill_tag,
   phone: u.phone,
   avatar: u.avatar,
-  created_at: Number(u.created_at)
+  created_at: Number(u.created_at),
+  last_seen: u.last_seen ? Number(u.last_seen) : null,
+  online: !!(u.last_seen && (Date.now() - Number(u.last_seen)) < ONLINE_WINDOW)
 });
 
 // ---------- 首次运行：建表 + 种子用户（每个 isolate 只执行一次） ----------
@@ -69,6 +73,8 @@ async function ensureSeedUsers(env) {
       created_at INTEGER NOT NULL
     )
   `).run();
+  // v3：在线状态（心跳时间戳）
+  await env.chat_db.prepare("ALTER TABLE users ADD COLUMN last_seen INTEGER").run().catch(() => {});
   await env.chat_db.prepare(`
     CREATE TABLE IF NOT EXISTS private_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,8 +87,39 @@ async function ensureSeedUsers(env) {
   `).run();
   await env.chat_db.prepare(`CREATE INDEX IF NOT EXISTS idx_pm_pair ON private_messages(sender_id, receiver_id)`).run();
 
+  // v3：服务市场 + 订单（网站这两块数据原先只在各设备本地，App 需要服务端统一数据源）
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS services (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      service_desc TEXT NOT NULL,
+      price REAL NOT NULL,
+      service_type TEXT NOT NULL,
+      sub_category TEXT DEFAULT '',
+      tags TEXT DEFAULT '[]',
+      cover TEXT DEFAULT '',
+      status INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      service_id INTEGER NOT NULL,
+      buyer_id INTEGER NOT NULL,
+      seller_id INTEGER NOT NULL,
+      order_price REAL NOT NULL,
+      order_status INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )
+  `).run();
+
   const { results } = await env.chat_db.prepare("SELECT COUNT(*) AS c FROM users").all();
-  if (Number(results[0].c) > 0) return;
+  if (Number(results[0].c) > 0) {
+    await seedServicesIfEmpty(env);
+    return;
+  }
 
   const seeds = [
     { id: 1, username: 'editor01', real_name: '张剪辑', user_type: 1, skill_tag: '剪辑,调色,字幕', phone: '13800000001' },
@@ -100,6 +137,29 @@ async function ensureSeedUsers(env) {
       INSERT INTO users (id, username, password_hash, real_name, user_type, skill_tag, phone, avatar, token, created_at)
       VALUES (?,?,?,?,?,?,?,NULL,NULL,?)
     `).bind(s.id, s.username, hash, s.real_name, s.user_type, s.skill_tag, s.phone, now).run();
+  }
+  await seedServicesIfEmpty(env);
+}
+
+// 服务种子数据（与网站本地数据一致；cover 为网站静态图相对路径）。表为空时才插入
+async function seedServicesIfEmpty(env) {
+  const svc = await env.chat_db.prepare("SELECT COUNT(*) AS c FROM services").all();
+  if (Number(svc.results[0].c) > 0) return;
+  const seedServices = [
+    { user_id: 1, title: '短视频剪辑与后期', service_desc: '提供短视频剪辑、字幕添加、BGM配乐、调色服务，支持抖音/小红书/B站等平台格式输出，24小时内交付。', price: 80, service_type: '线上数字服务', sub_category: '短视频剪辑', tags: ['剪辑','调色','字幕'], cover: 'images/task-clip.jpg' },
+    { user_id: 2, title: 'PPT定制美化设计', service_desc: '专业PPT设计，涵盖答辩、汇报、商业计划书等场景，提供模板定制、内容排版、动画效果，可加急交付。', price: 150, service_type: '线上数字服务', sub_category: 'PPT制作', tags: ['PPT','设计','排版'], cover: 'images/task-ppt.jpg' },
+    { user_id: 4, title: '校园活动跟拍摄影', service_desc: '杭州同城线下摄影服务，覆盖校园活动、毕业照、人像写真，提供精修20张+原片全送，需提前3天预约。', price: 300, service_type: '同城线下劳务', sub_category: '摄影跟拍', tags: ['摄影','跟拍','修图'], cover: 'images/task-photo.jpg' },
+    { user_id: 5, title: '手工滴胶饰品定制', service_desc: '纯手工滴胶饰品定制，可做钥匙扣、书签、吊坠等，支持来图定制、颜色自选，3-5天交付。', price: 50, service_type: '手作实物定制', sub_category: '滴胶作品', tags: ['手工','滴胶','定制'], cover: 'images/task-handmade.jpg' },
+    { user_id: 2, title: '海报/宣传单平面设计', service_desc: '专业平面设计，涵盖海报、宣传单、名片、公众号配图等，提供3版修改，源文件交付。', price: 120, service_type: '线上数字服务', sub_category: '平面设计', tags: ['设计','海报','排版'], cover: 'images/task-design.jpg' },
+    { user_id: 7, title: 'Python脚本/小程序开发', service_desc: 'Python自动化脚本、数据处理、爬虫、微信小程序开发，可提供源码和注释，支持后续维护。', price: 200, service_type: '线上数字服务', sub_category: '编程开发', tags: ['编程','Python','前端'], cover: 'images/task-code.jpg' },
+    { user_id: 6, title: '高数/大物家教辅导', service_desc: '大一高等数学、大学物理家教辅导，可线上/线下，擅长期末冲刺、知识点梳理，提分明显。', price: 80, service_type: '同城线下劳务', sub_category: '家教辅导', tags: ['家教','数学','物理'], cover: 'images/task-ppt.jpg' },
+    { user_id: 1, title: 'Vlog/旅拍视频剪辑', service_desc: 'Vlog、旅拍、生活记录视频剪辑，支持4K输出，包含调色、转场、字幕、BGM，风格可定制。', price: 120, service_type: '线上数字服务', sub_category: '短视频剪辑', tags: ['剪辑','Vlog','调色'], cover: 'images/task-clip.jpg' },
+  ];
+  for (const s of seedServices) {
+    await env.chat_db.prepare(`
+      INSERT INTO services (user_id, title, service_desc, price, service_type, sub_category, tags, cover, status, created_at)
+      VALUES (?,?,?,?,?,?,?,?,1,?)
+    `).bind(s.user_id, s.title, s.service_desc, s.price, s.service_type, s.sub_category, JSON.stringify(s.tags), s.cover, Date.now()).run();
   }
 }
 
@@ -173,26 +233,31 @@ export default {
 
     // 查用户公开资料：GET /users?ids=1,2,3 批量，或 GET /users?username=xxx 按账号精确查找（发起新聊天用）
     if (url.pathname === '/users' && request.method === 'GET') {
+      const COLS = 'id, username, real_name, user_type, skill_tag, phone, avatar, created_at, last_seen';
       const uname = (q.get('username') || '').trim();
       if (uname) {
-        const { results } = await env.chat_db.prepare(
-          `SELECT id, username, real_name, user_type, skill_tag, phone, avatar, created_at FROM users WHERE username = ?`
-        ).bind(uname).all();
+        const { results } = await env.chat_db.prepare(`SELECT ${COLS} FROM users WHERE username = ?`).bind(uname).all();
         return json(results.map(publicUser));
       }
       const ids = q.get('ids') || '';
       const list = ids.split(',').map(Number).filter(Boolean);
       if (!list.length) return json([]);
       const { results } = await env.chat_db.prepare(
-        `SELECT id, username, real_name, user_type, skill_tag, phone, avatar, created_at FROM users WHERE id IN (${list.map(() => '?').join(',')})`
+        `SELECT ${COLS} FROM users WHERE id IN (${list.map(() => '?').join(',')})`
       ).bind(...list).all();
       return json(results.map(publicUser));
     }
 
     // ---------- 以下接口需要登录（token） ----------
-    const PROTECTED = ['/me', '/send', '/history', '/read', '/conversations'];
+    const PROTECTED = ['/me', '/send', '/history', '/read', '/conversations', '/heartbeat', '/orders'];
     const me = PROTECTED.includes(url.pathname) ? await getAuthUser(env, request) : null;
     if (PROTECTED.includes(url.pathname) && !me) return json({ error: '未登录或登录已过期' }, 401);
+
+    // 心跳 POST /heartbeat：App/网站定期调用，用于在线状态
+    if (url.pathname === '/heartbeat' && request.method === 'POST') {
+      await env.chat_db.prepare("UPDATE users SET last_seen = ? WHERE id = ?").bind(Date.now(), Number(me.id)).run();
+      return json({ ok: true, online: true });
+    }
 
     // 当前用户资料 GET /me
     if (url.pathname === '/me' && request.method === 'GET') return json(publicUser(me));
@@ -257,7 +322,7 @@ export default {
         const [last, unread, user] = await Promise.all([
           env.chat_db.prepare(`SELECT content FROM private_messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY create_time DESC LIMIT 1`).bind(Number(me.id), peerId, peerId, Number(me.id)).all(),
           env.chat_db.prepare(`SELECT COUNT(*) AS c FROM private_messages WHERE sender_id = ? AND receiver_id = ? AND is_read = 0`).bind(peerId, Number(me.id)).all(),
-          env.chat_db.prepare(`SELECT id, username, real_name, user_type, skill_tag, phone, avatar, created_at FROM users WHERE id = ?`).bind(peerId).all()
+          env.chat_db.prepare(`SELECT id, username, real_name, user_type, skill_tag, phone, avatar, created_at, last_seen FROM users WHERE id = ?`).bind(peerId).all()
         ]);
         const u = user.results[0] || null;
         convs.push({
@@ -270,6 +335,77 @@ export default {
         });
       }
       return json(convs);
+    }
+
+    // 服务市场 GET /services （公开；带卖家昵称/在线状态）
+    if (url.pathname === '/services' && request.method === 'GET') {
+      const { results } = await env.chat_db.prepare(`
+        SELECT s.*, u.real_name AS seller_name, u.username AS seller_username, u.avatar AS seller_avatar, u.last_seen AS seller_last_seen
+        FROM services s LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.status = 1 ORDER BY s.created_at DESC
+      `).all();
+      return json(results.map(r => ({
+        id: Number(r.id),
+        user_id: Number(r.user_id),
+        seller_name: r.seller_name || r.seller_username || '用户',
+        seller_avatar: r.seller_avatar,
+        online: !!(r.seller_last_seen && (Date.now() - Number(r.seller_last_seen)) < ONLINE_WINDOW),
+        title: r.title,
+        service_desc: r.service_desc,
+        price: Number(r.price),
+        service_type: r.service_type,
+        sub_category: r.sub_category,
+        tags: (() => { try { return JSON.parse(r.tags || '[]'); } catch { return []; } })(),
+        cover: r.cover,
+        created_at: Number(r.created_at)
+      })));
+    }
+
+    // 下单 POST /orders {service_id}：生成订单，并自动给卖家发一条消息建立会话
+    if (url.pathname === '/orders' && request.method === 'POST') {
+      const b = await readBody();
+      const serviceId = Number(b.service_id);
+      if (!serviceId) return json({ error: '缺少 service_id' }, 400);
+      const { results } = await env.chat_db.prepare("SELECT * FROM services WHERE id = ? AND status = 1").bind(serviceId).all();
+      const svc = results[0];
+      if (!svc) return json({ error: '服务不存在或已下架' }, 404);
+      if (Number(svc.user_id) === Number(me.id)) return json({ error: '不能下单自己的服务' }, 400);
+      const res = await env.chat_db.prepare(`
+        INSERT INTO orders (service_id, buyer_id, seller_id, order_price, order_status, created_at)
+        VALUES (?,?,?,?,0,?)
+      `).bind(serviceId, Number(me.id), Number(svc.user_id), Number(svc.price), Date.now()).run();
+      await env.chat_db.prepare(`
+        INSERT INTO private_messages (sender_id, receiver_id, content, create_time, is_read) VALUES (?,?,?,?,0)
+      `).bind(Number(me.id), Number(svc.user_id), `【订单】我下单了你的服务「${svc.title}」（¥${svc.price}），请和我沟通需求详情～`, Date.now()).run();
+      return json({ ok: true, order_id: res.meta.last_row_id });
+    }
+
+    // 我的订单 GET /orders （买家或卖家视角）
+    if (url.pathname === '/orders' && request.method === 'GET') {
+      const { results } = await env.chat_db.prepare(`
+        SELECT o.*, s.title AS service_title, s.cover AS service_cover,
+               bu.real_name AS buyer_name, se.real_name AS seller_name
+        FROM orders o
+        LEFT JOIN services s ON s.id = o.service_id
+        LEFT JOIN users bu ON bu.id = o.buyer_id
+        LEFT JOIN users se ON se.id = o.seller_id
+        WHERE o.buyer_id = ? OR o.seller_id = ?
+        ORDER BY o.created_at DESC
+      `).bind(Number(me.id), Number(me.id)).all();
+      return json(results.map(r => ({
+        id: Number(r.id),
+        service_id: Number(r.service_id),
+        service_title: r.service_title,
+        service_cover: r.service_cover,
+        buyer_id: Number(r.buyer_id),
+        seller_id: Number(r.seller_id),
+        buyer_name: r.buyer_name || '用户',
+        seller_name: r.seller_name || '用户',
+        am_buyer: Number(r.buyer_id) === Number(me.id),
+        order_price: Number(r.order_price),
+        order_status: Number(r.order_status),
+        created_at: Number(r.created_at)
+      })));
     }
 
     return json({ msg: 'route not found' }, 404);

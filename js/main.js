@@ -926,6 +926,13 @@ async function fetchUserInfo(ids) {
     return list;
 }
 
+// ---------- 在线状态心跳：登录状态下每60秒上报一次，对方可见"在线" ----------
+setInterval(() => {
+    if (currentUser && currentUser.token) {
+        apiFetch('/heartbeat', { method: 'POST' }).catch(() => {});
+    }
+}, 60000);
+
 // ---------- 后端响应归一化（兼容不同字段名，避免字段变动导致页面报错） ----------
 function arrFrom(data) {
     if (Array.isArray(data)) return data;
@@ -967,13 +974,14 @@ function normConv(c, myId) {
     const name = c.name != null ? c.name : (c.display_name != null ? c.display_name : (c.username != null ? c.username : (c.real_name != null ? c.real_name : null)));
     const lastMsg = c.last_msg != null ? c.last_msg : (c.last_message != null ? c.last_message : (c.last_content != null ? c.last_content : (c.content != null ? c.content : '暂无消息')));
     const lastTime = normTime(c.last_time != null ? c.last_time : (c.updated_at != null ? c.updated_at : (c.last_at != null ? c.last_at : c.time)));
-    return { 
-        peer_id: Number(peerId), 
-        name, 
-        avatar: c.avatar != null ? c.avatar : (c.peer_avatar || null), 
-        last_msg: lastMsg, 
-        last_time: lastTime, 
-        unread: Number(c.unread != null ? c.unread : c.unread_count) || 0 
+    return {
+        peer_id: Number(peerId),
+        name,
+        avatar: c.avatar != null ? c.avatar : (c.peer_avatar || null),
+        online: !!c.online,
+        last_msg: lastMsg,
+        last_time: lastTime,
+        unread: Number(c.unread != null ? c.unread : c.unread_count) || 0
     };
 }
 
@@ -1038,7 +1046,7 @@ async function renderMessages() {
         return `<div class="msg-item ${isActive ? 'active' : ''}" onclick="selectChat('${c.peer_id}')">
             ${avatarHtml}
             <div class="msg-item-info">
-                <div class="msg-item-name">${displayName}<span class="msg-item-time">${formatTime(c.last_time)}</span></div>
+                <div class="msg-item-name">${displayName}${c.online ? '<span class="online-dot"></span>' : ''}<span class="msg-item-time">${formatTime(c.last_time)}</span></div>
                 <div class="msg-item-preview">${String(c.last_msg).substring(0, 30)}</div>
             </div>
             ${c.unread > 0 ? `<span class="msg-item-badge">${c.unread}</span>` : ''}
@@ -1075,7 +1083,7 @@ async function renderChatWindow() {
     const avatarHtml = other && other.avatar
         ? `<img src="${other.avatar}" class="msg-chat-header-avatar" style="object-fit:cover;">`
         : `<div class="msg-chat-header-avatar">${String(displayName).charAt(0)}</div>`;
-    document.getElementById('msgChatHeader').innerHTML = `${avatarHtml}<div class="msg-chat-header-info"><div class="msg-chat-header-name">${displayName}</div></div>`;
+    document.getElementById('msgChatHeader').innerHTML = `${avatarHtml}<div class="msg-chat-header-info"><div class="msg-chat-header-name">${displayName}${other && other.online ? '<span class="chat-online-tag">● 在线</span>' : ''}</div></div>`;
 
     let msgs = [];
     try {
