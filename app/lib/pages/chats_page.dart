@@ -212,7 +212,69 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
     ]);
   }
 
+  Widget _msgsView() {
+    final body = items == null && error == null
+        ? const Center(child: CircularProgressIndicator())
+        : error != null
+            ? ListView(children: [Padding(padding: const EdgeInsets.all(48), child: Center(child: Text(error!, style: const TextStyle(color: Colors.black45))))])
+            : ((items!.isEmpty && groups.isEmpty) ? _empty() : _convList());
+    return Column(children: [
+      if (kefu != null)
+        ListTile(
+          leading: Stack(children: [
+            const CircleAvatar(radius: 22, backgroundColor: Color(0xFFEDF2FF), child: Icon(Icons.support_agent, color: kPrimary, size: 24)),
+            Positioned(right: 0, bottom: 0, child: Container(padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                child: const OnlineDot(size: 8))),
+          ]),
+          title: const Text('官方客服', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+          subtitle: const Text('交易分歧、账号问题随时留言', style: TextStyle(fontSize: 12)),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: kefu!.id, peerName: '官方客服', meId: widget.me.id))),
+        ),
+      if (invites.isNotEmpty)
+        Container(margin: const EdgeInsets.fromLTRB(12, 6, 12, 0), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(color: const Color(0xFFEDF2FF), borderRadius: BorderRadius.circular(12)),
+            child: Column(children: invites.map((inv) => Row(children: [
+              const Icon(Icons.group_add, size: 18, color: kPrimary),
+              const SizedBox(width: 8),
+              Expanded(child: Text(inv.inviterName + ' 邀请你加入「' + inv.name + '」', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+              TextButton(onPressed: () => _handleInvite(inv.inviteId, false), style: TextButton.styleFrom(visualDensity: VisualDensity.compact), child: const Text('拒绝', style: TextStyle(fontSize: 12, color: Colors.black45))),
+              TextButton(onPressed: () => _handleInvite(inv.inviteId, true), style: TextButton.styleFrom(visualDensity: VisualDensity.compact), child: const Text('同意', style: TextStyle(fontSize: 12, color: kPrimary))),
+            ])).toList())),
+      Expanded(child: RefreshIndicator(onRefresh: _refreshAll, color: kPrimary, child: body)),
+    ]);
+  }
+
+  Future<void> _refreshAll() async {
+    await _load();
+    await _loadGroups();
+  }
+
+  Widget _convList() {
+    if (groups.isEmpty) return _list();
+    return Column(children: [
+      const Padding(padding: EdgeInsets.fromLTRB(16, 10, 16, 2), child: Align(alignment: Alignment.centerLeft, child: Text('我的群聊', style: TextStyle(fontSize: 12, color: Colors.black38)))),
+      SizedBox(height: 78, child: ListView.separated(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: groups.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, i) {
+          final g = groups[i];
+          return InkWell(borderRadius: BorderRadius.circular(12), onTap: () async {
+            await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: -g.groupId, peerName: g.name, meId: widget.me.id)));
+            refresh();
+          }, child: SizedBox(width: 64, child: Column(children: [
+            CircleAvatar(radius: 24, backgroundColor: kPrimary.withOpacity(0.12), child: const Icon(Icons.group, color: kPrimary, size: 24)),
+            const SizedBox(height: 4),
+            Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+          ])));
+        })),
+      const Divider(height: 12),
+      Expanded(child: _list()),
+    ]);
+  }
+
   void _showAddMenu() {
+
     showModalBottomSheet(context: context, backgroundColor: Colors.white,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         builder: (_) => SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [

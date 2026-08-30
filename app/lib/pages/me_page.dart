@@ -101,7 +101,7 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
       await api.saveWorks(list);
       if (!mounted) return;
       setState(() => works = list);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('作品已上传，别人能在你主页看到'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('作品已上传，别人能在你主页看到'),
           backgroundColor: kPrimary, behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
     } catch (_) {
