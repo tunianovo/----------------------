@@ -14,6 +14,7 @@ import '../api.dart';
 import '../main.dart';
 import '../cache.dart';
 import '../theme.dart';
+import 'profile_page.dart';
 
 class ChatPage extends StatefulWidget {
   final int peerId; // 单聊: 对方用户id(>0)；群聊: -(群id)
@@ -36,6 +37,8 @@ class _ChatPageState extends State<ChatPage> {
   bool loading = true;
   String? error;
   StreamSubscription? _poll;
+  final Set<int> selected = {};
+  bool selecting = false;
 
   @override
   void initState() {
@@ -145,11 +148,11 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _sendImage() async {
     try {
-      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1080, imageQuality: 60);
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 720, imageQuality: 40);
       if (x == null) return;
-      final bytes = await x.readAsBytes();
+      var bytes = await x.readAsBytes();
       if (bytes.length > 280 * 1024) {
-        _toast('图片过大，请换一张小图（约小于300KB）', isError: true);
+        _toast('图片过大，请换一张小图', isError: true);
         return;
       }
       await _sendRaw('【图片】data:image/jpeg;base64,${base64Encode(bytes)}');
@@ -233,10 +236,13 @@ class _ChatPageState extends State<ChatPage> {
       appBar: AppBar(
         titleSpacing: 0,
         title: Row(children: [
-          CircleAvatar(radius: 18, backgroundColor: widget.isGroup ? kPrimary.withOpacity(0.15) : const Color(0xFFEDF2FF),
-              child: widget.isGroup
-                  ? const Icon(Icons.group, size: 20, color: kPrimary)
-                  : UserAvatar(url: peer?.avatar, name: title, radius: 18)),
+          GestureDetector(
+            onTap: widget.isGroup ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: widget.realId))),
+            child: CircleAvatar(radius: 18, backgroundColor: widget.isGroup ? kPrimary.withOpacity(0.15) : const Color(0xFFEDF2FF),
+                child: widget.isGroup
+                    ? const Icon(Icons.group, size: 20, color: kPrimary)
+                    : UserAvatar(url: peer?.avatar, name: title, radius: 18))),
+          const SizedBox(width: 2),
           const SizedBox(width: 10),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -248,7 +254,31 @@ class _ChatPageState extends State<ChatPage> {
           ])),
         ]),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: () { _loadPeer(); _load(); }),
+          if (selecting)
+            TextButton.icon(
+              onPressed: selected.isEmpty ? null : () async {
+                final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      title: const Text('删除消息'),
+                      content: Text('删除选中的 ${selected.length} 条消息？（仅删除你发送的）'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                        FilledButton(style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE5484D)),
+                            onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
+                      ],
+                    ));
+                if (ok == true) {
+                  await api.deleteMessages(selected.toList());
+                  if (!mounted) return;
+                  setState(() { selecting = false; selected.clear(); });
+                  _load(silent: true);
+                }
+              },
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: Text('删除(${selected.length})', style: const TextStyle(fontSize: 12)),
+            )
+          else
+            IconButton(icon: const Icon(Icons.refresh), onPressed: () { _loadPeer(); _load(); }),
         ],
       ),
       body: Column(children: [
@@ -276,9 +306,20 @@ class _ChatPageState extends State<ChatPage> {
         final isSelf = m.senderId == widget.meId;
         // 已读回执：自己发的最后一条，对方点进聊天页（isRead）即显示已读
         final isLastSelf = isSelf && (i + 1 >= messages.length || messages[i + 1].senderId != widget.meId);
+        final isSelected = selected.contains(m.id);
+        final bubble = GestureDetector(
+          onLongPress: isSelf ? () { setState(() { selecting = true; selected.add(m.id); }); } : null,
+          onTap: (selecting && isSelf) ? () { setState(() { if (selected.contains(m.id)) { selected.remove(m.id); } else { selected.add(m.id); } }); } : null,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            padding: const EdgeInsets.all(2),
+            decoration: isSelected ? BoxDecoration(color: kPrimary.withOpacity(0.15), borderRadius: BorderRadius.circular(22)) : null,
+            child: _bubble(m.content, isSelf, ts: m.createTime),
+          ),
+        );
         return Column(crossAxisAlignment: isSelf ? CrossAxisAlignment.end : CrossAxisAlignment.start, children: [
-          _bubble(m.content, isSelf, ts: m.createTime),
-          if (isSelf && isLastSelf)
+          bubble,
+          if (isSelf && isLastSelf && !selecting)
             Padding(padding: const EdgeInsets.only(right: 4, top: 1),
                 child: Text(m.isRead ? '已读' : '未读', style: TextStyle(fontSize: 9, color: m.isRead ? kPrimary : Colors.black26))),
         ]);

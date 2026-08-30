@@ -22,6 +22,12 @@ class _MarketPageState extends State<MarketPage> {
   String? error;
   String keyword = '';
   String category = '全部';
+  String subCategory = '';
+  static const subCategories = {
+    '线上数字服务': ['短视频剪辑', 'PPT制作', '平面设计', '编程开发', '文案写作', '翻译配音'],
+    '手作实物定制': ['滴胶作品', '编织钩针'],
+    '同城线下劳务': ['摄影跟拍', '跑腿代办', '家教辅导', '乐器陪练'],
+  };
   static const categories = ['全部', '线上数字服务', '手作实物定制', '同城线下劳务'];
   String viewMode = 'services'; // services 服务市场 / tasks 需求大厅
   List<TaskItem>? taskItems;
@@ -72,9 +78,33 @@ class _MarketPageState extends State<MarketPage> {
     return (cachedProjects ?? []).where((p) => p.name.contains(keyword) || p.desc.contains(keyword) || p.needSkills.any((s) => s.contains(keyword))).toList();
   }
 
+  Widget _subChip(String label, String value) {
+    final bool selected = subCategory == value;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          subCategory = value;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? Colors.black : Colors.white,
+          border: Border.all(color: selected ? Colors.black : const Color(0xFFE5E5E7)),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(fontSize: 11.5, color: selected ? Colors.white : Colors.black54),
+        ),
+      ),
+    );
+  }
+
   List<ServiceItem> get _filtered {
     var all = items ?? [];
     if (category != '全部') all = all.where((s) => s.serviceType == category).toList();
+    if (subCategory.isNotEmpty) all = all.where((s) => s.subCategory == subCategory).toList();
     if (keyword.isNotEmpty) {
       all = all.where((s) => s.title.contains(keyword) || s.desc.contains(keyword) || s.tags.any((t) => t.contains(keyword))).toList();
     }
@@ -263,37 +293,55 @@ class _MarketPageState extends State<MarketPage> {
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: TextField(
-              onChanged: (v) => setState(() => keyword = v.trim()),
-              decoration: const InputDecoration(hintText: '搜索服务、技能…', prefixIcon: Icon(Icons.search)),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            child: Container(
+              height: 38,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(color: const Color(0xFFE9E9EB), borderRadius: BorderRadius.circular(10)),
+              child: Row(children: [
+                for (final cat in categories)
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() { category = cat; subCategory = ''; }),
+                      child: Container(
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: category == cat ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: category == cat ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 1))] : null,
+                        ),
+                        child: Text(cat, style: TextStyle(fontSize: 12.5, fontWeight: category == cat ? FontWeight.w700 : FontWeight.w500,
+                            color: category == cat ? Colors.black : Colors.black54), maxLines: 1),
+                      ),
+                    ),
+                  ),
+              ]),
             ),
           ),
         ),
         SliverToBoxAdapter(
-          child: SizedBox(
-            height: 52,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              scrollDirection: Axis.horizontal,
-              itemCount: categories.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final c = categories[i];
-                final selected = category == c;
-                return ChoiceChip(
-                  label: Text(c),
-                  selected: selected,
-                  selectedColor: kPrimary,
-                  labelStyle: TextStyle(fontSize: 12, color: selected ? Colors.white : Colors.black54),
-                  showCheckmark: false,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (_) => setState(() => category = c),
-                );
-              },
-            ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: SizedBox(height: 40, child: TextField(
+              style: const TextStyle(fontSize: 13),
+              onChanged: (v) => setState(() => keyword = v.trim()),
+              decoration: InputDecoration(hintText: '搜索服务、技能…', prefixIcon: const Icon(Icons.search, size: 20),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  fillColor: Colors.white, filled: true,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none)),
+            )),
           ),
         ),
+        if (category != '全部' && (subCategories[category] ?? []).isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Wrap(spacing: 8, runSpacing: 6, children: [
+                _subChip('全部', ''),
+                ...((subCategories[category] ?? []).map((s) => _subChip(s, s))),
+              ]),
+            ),
+          ),
         if (_matchedProjects.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(

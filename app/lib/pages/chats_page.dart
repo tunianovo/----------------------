@@ -7,6 +7,7 @@ import '../main.dart';
 import '../bg_task.dart';
 import '../cache.dart';
 import '../theme.dart';
+import 'profile_page.dart';
 import 'chat_page.dart';
 
 class ChatsPage extends StatefulWidget {
@@ -26,6 +27,7 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
   String userFilter = '';
   List<GroupInfo> groups = [];
   List<GroupInvite> invites = [];
+  UserAccount? kefu;
 
   @override
   bool get wantKeepAlive => true;
@@ -36,6 +38,7 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
     _load();
     _loadUsers();
     _loadGroups();
+    api.userByUsername('kefu01').then((u) { if (mounted) setState(() => kefu = u); }).catchError((_) {});
     requestNotificationPermission(); // Android 13+ 通知权限
     // 每5秒轮询新消息/在线状态
     Stream.periodic(const Duration(seconds: 5)).listen((_) { if (mounted) _load(silent: true); });
@@ -198,7 +201,7 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
                                 maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.black45)),
                             trailing: Text(u.online ? '在线' : '', style: const TextStyle(fontSize: 11, color: kOnline)),
                             onTap: () async {
-                              await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: u.id, peerName: u.displayName, meId: widget.me.id)));
+                              await Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: u.id)));
                               _load(silent: true);
                             },
                           );
@@ -207,56 +210,6 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
               ),
       ),
     ]);
-  }
-
-  Widget _msgsView() {
-    return Column(children: [
-      if (invites.isNotEmpty)
-        Container(margin: const EdgeInsets.fromLTRB(12, 8, 12, 0), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: const Color(0xFFEDF2FF), borderRadius: BorderRadius.circular(12)),
-            child: Column(children: invites.map((inv) => Row(children: [
-              const Icon(Icons.group_add, size: 18, color: kPrimary),
-              const SizedBox(width: 8),
-              Expanded(child: Text(inv.inviterName + ' 邀请你加入「' + inv.name + '」', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-              TextButton(onPressed: () => _handleInvite(inv.inviteId, false), style: TextButton.styleFrom(visualDensity: VisualDensity.compact), child: const Text('拒绝', style: TextStyle(fontSize: 12, color: Colors.black45))),
-              TextButton(onPressed: () => _handleInvite(inv.inviteId, true), style: TextButton.styleFrom(visualDensity: VisualDensity.compact), child: const Text('同意', style: TextStyle(fontSize: 12, color: kPrimary))),
-            ])).toList())),
-      Expanded(child: RefreshIndicator(
-        onRefresh: () async { await _load(); await _loadGroups(); },
-        color: kPrimary,
-        child: items == null && error == null
-            ? const Center(child: CircularProgressIndicator())
-            : error != null
-                ? ListView(children: [Padding(padding: const EdgeInsets.all(48), child: Center(child: Text(error!, style: const TextStyle(color: Colors.black45))))])
-                : ((items!.isEmpty && groups.isEmpty) ? _empty() : _chatsWithGroups()),
-      )),
-    ]);
-  }
-
-  Widget _chatsWithGroups() {
-    return ListView(
-      children: [
-        if (groups.isNotEmpty) ...[
-          const Padding(padding: EdgeInsets.fromLTRB(16, 10, 16, 4), child: Text('我的群聊', style: TextStyle(fontSize: 12, color: Colors.black38))),
-          SizedBox(height: 84, child: ListView.separated(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: groups.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (_, i) {
-              final g = groups[i];
-              return InkWell(borderRadius: BorderRadius.circular(12), onTap: () async {
-                await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: -g.groupId, peerName: g.name, meId: widget.me.id)));
-                refresh();
-              }, child: SizedBox(width: 68, child: Column(children: [
-                CircleAvatar(radius: 26, backgroundColor: kPrimary.withOpacity(0.12), child: const Icon(Icons.group, color: kPrimary, size: 26)),
-                const SizedBox(height: 4),
-                Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
-              ])));
-            })),
-        ],
-        if (groups.isNotEmpty) const Divider(),
-        _list(),
-      ],
-    );
   }
 
   void _showAddMenu() {
@@ -345,16 +298,17 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
           final c = items![i];
           return ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            leading: Stack(children: [
-              UserAvatar(url: c.avatar, name: c.name, radius: 24),
-              if (c.online)
-                Positioned(right: 0, bottom: 0, child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                  child: const OnlineDot(size: 9))),
-            ]),
-            title: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+            leading: GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: c.peerId))),
+              child: Stack(children: [
+                UserAvatar(url: c.avatar, name: c.name, radius: 24),
+                if (c.online)
+                  Positioned(right: 0, bottom: 0, child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                    child: const OnlineDot(size: 9))),
+              ])),
+            title: GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: c.peerId))),
+                child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
             subtitle: Text(c.lastMsg, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 13, color: Colors.black45)),
             trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [

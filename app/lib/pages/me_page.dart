@@ -2,6 +2,7 @@
 // 我的：抖音式个人主页（背景图、头像、标签、技术介绍、作品展示）
 // 背景图/头像/作品都只保存在本机，不上传服务器
 // ============================================================
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -53,13 +54,16 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
     final p = await SharedPreferences.getInstance();
     final a = p.getString('my_avatar');
     final b = p.getString('my_bg');
-    final w = p.getStringList('my_works');
     if (!mounted) return;
     setState(() {
       if (a != null && File(a).existsSync()) avatarPath = a;
       if (b != null && File(b).existsSync()) bgPath = b;
-      works = (w ?? []).where((x) => File(x).existsSync()).toList();
     });
+    // 作品从服务端拉取（别人的主页也能看到）
+    try {
+      final w = await api.getWorks(widget.me.id);
+      if (mounted) setState(() => works = w);
+    } catch (_) {}
   }
 
   Future<String?> _pickAndSave(String saveName) async {
@@ -85,21 +89,35 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
   }
 
   Future<void> _addWork() async {
-    final path = await _pickAndSave('work_${DateTime.now().millisecondsSinceEpoch}.png');
-    if (path == null || !mounted) return;
-    final p = await SharedPreferences.getInstance();
-    final list = p.getStringList('my_works') ?? [];
-    list.add(path);
-    await p.setStringList('my_works', list);
-    setState(() => works = list);
+    final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 720, imageQuality: 40);
+    if (x == null || !mounted) return;
+    final bytes = await x.readAsBytes();
+    if (bytes.length > 280 * 1024) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('作品图片过大，请换小图'), behavior: SnackBarBehavior.floating));
+      return;
+    }
+    final list = [...works, 'data:image/jpeg;base64,' + base64Encode(bytes)];
+    try {
+      await api.saveWorks(list);
+      if (!mounted) return;
+      setState(() => works = list);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('作品已上传，别人能在你主页看到'),
+          backgroundColor: kPrimary, behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('作品上传失败，请重试'), behavior: SnackBarBehavior.floating));
+    }
   }
 
   Future<void> _removeWork(int index) async {
-    final p = await SharedPreferences.getInstance();
-    final list = p.getStringList('my_works') ?? [];
-    if (index < list.length) list.removeAt(index);
-    await p.setStringList('my_works', list);
-    setState(() => works = list);
+    final list = [...works]..removeAt(index);
+    try {
+      await api.saveWorks(list);
+      if (!mounted) return;
+      setState(() => works = list);
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('删除失败，请重试'), behavior: SnackBarBehavior.floating));
+    }
   }
 
   // 编辑标签与介绍（标签同步到服务端，用于共创推荐匹配）
@@ -168,7 +186,7 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
                     ? Image.file(File(bgPath!), fit: BoxFit.cover)
                     : const Center(child: Text('点击上传背景图（仅本机保存）', style: TextStyle(fontSize: 11, color: Colors.black26)))),
           ),
-          Positioned(top: 10, right: 10, child: Material(
+          Positioned(top: MediaQuery.of(context).padding.top + 40, right: 12, child: Material(
             color: Colors.black26, borderRadius: BorderRadius.circular(18),
             child: InkWell(borderRadius: BorderRadius.circular(18), onTap: _openSettings,
                 child: const Padding(padding: EdgeInsets.all(7), child: Icon(Icons.settings, color: Colors.white, size: 20))),
@@ -256,12 +274,13 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
                       itemCount: works.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (_, i) {
-                        final w = works[i];
+                        final data = works[i].split(',').last;
                         return Stack(
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.file(File(w), width: 96, height: 96, fit: BoxFit.cover),
+                              child: Image.memory(base64Decode(data), width: 96, height: 96, fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(width: 96, height: 96, color: const Color(0xFFEDF2FF))),
                             ),
                             Positioned(
                               top: 2,

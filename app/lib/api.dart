@@ -358,9 +358,11 @@ class Api {
     late http.Response res;
     try {
       if (method == 'POST') {
-        res = await http.post(uri, headers: _headers, body: jsonEncode(body ?? {}));
+        res = await http.post(uri, headers: _headers, body: jsonEncode(body ?? {})).timeout(const Duration(seconds: 10));
+      } else if (method == 'PUT') {
+        res = await http.put(uri, headers: _headers, body: jsonEncode(body ?? {})).timeout(const Duration(seconds: 10));
       } else {
-        res = await http.get(uri, headers: _headers);
+        res = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 10));
       }
     } catch (e) {
       throw ApiException('网络连接失败，请检查网络');
@@ -581,6 +583,21 @@ class Api {
   Future<List<UserAccount>> recommendFor(int projectId) async {
     final d = await _send('GET', '/projects/recommend', query: {'project_id': '$projectId'});
     return (d as List).map(UserAccount.fromJson).toList();
+  }
+
+  // ---- 消息删除 ----
+  Future<void> deleteMessages(List<int> ids) async {
+    await _send('POST', '/messages/delete', body: {'ids': ids});
+  }
+
+  // ---- 作品展示 ----
+  Future<List<String>> getWorks(int userId) async {
+    final d = await _send('GET', '/works', query: {'user_id': '$userId'});
+    return (d as List).map((e) => e.toString()).toList();
+  }
+
+  Future<void> saveWorks(List<String> works) async {
+    await _send('PUT', '/works/save', body: {'works': works});
   }
 
   // ---- 短信验证码 ----
