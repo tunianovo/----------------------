@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+defaults:
+  run:
+    working-directory: app
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -54,7 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jsgx-app-apk
-          path: dist/*.apk
+          path: app/dist/*.apk
 
       - name: Create/Update release
         uses: softprops/action-gh-release@v2
@@ -68,7 +72,7 @@ jobs:
             - 私信聊天、在线状态显示
             - arm64 适合近几年的手机；老设备用 arm32
           files: |
-            dist/jsgx-app-arm64.apk
-            dist/jsgx-app-arm32.apk
+            app/dist/jsgx-app-arm64.apk
+            app/dist/jsgx-app-arm32.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
