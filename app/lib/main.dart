@@ -24,7 +24,7 @@ final Api api = Api();
 final ValueNotifier<UserAccount?> session = ValueNotifier(null);
 
 /// 当前 App 版本（与 pubspec.yaml 保持一致；用于更新检查）
-const String kAppVersion = '1.2.2';
+const String kAppVersion = '1.2.3';
 
 /// 崩溃日志写入（同步写，闪退前尽量落盘）
 void writeCrashLog(String what, Object error, StackTrace? st) {

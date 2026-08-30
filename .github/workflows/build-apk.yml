@@ -37,18 +37,6 @@ jobs:
           cp -r scaffold/android ./android
           node tools/patch_gradle.js
 
-      - name: Restore signing keystore
-        uses: actions/cache@v4
-        with:
-          path: android/app/keystore.jks
-          key: jyao-signing-v1
-
-      - name: Signing setup
-        run: |
-          if [ ! -f android/app/keystore.jks ]; then
-            keytool -genkeypair -v -keystore android/app/keystore.jks -alias jyao -keyalg RSA -keysize 2048 -validity 10000 -storepass jyao2026 -keypass jyao2026 -dname "CN=jyao,O=jyao,C=CN"
-          fi
-
       - name: Apply launcher icons
         run: dart run flutter_launcher_icons
 
@@ -71,8 +59,8 @@ jobs:
       - name: Create/Update release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: app-v1.2.2
-          name: 己曜 App v1.2.2
+          tag_name: app-v1.2.3
+          name: 己曜 App v1.2.3
           body: |
             己曜安卓客户端 v1.0.4
             - 后台消息手机通知
