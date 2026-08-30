@@ -61,8 +61,10 @@ Future<void> main() async {
 
     // 后台消息提醒：延后到界面起来之后，且逐段保护，绝不影响启动
     if (session.value != null) {
-      Timer(const Duration(seconds: 5), () {
-        initBackgroundPolling().catchError((_) {});
+      Timer(const Duration(seconds: 3), () async {
+        try { await requestNotificationPermission(); } catch (_) {}
+        try { await initBackgroundPolling(); } catch (_) {}
+        if (session.value != null) await _showBatteryHint();
       });
     }
   }, (error, stack) {
@@ -195,13 +197,34 @@ class _AppGateState extends State<AppGate> {
     return false;
   }
 
+  // 国产ROM后台限制引导（一次性）
+  Future<void> _showBatteryHint([BuildContext? ctx]) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('battery_hint_shown') == true) return;
+      final c = ctx ?? this.context;
+      if (!c.mounted) return;
+      await showDialog(context: c, builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('开启消息提醒', style: TextStyle(fontSize: 17)),
+        content: const Text('为了在后台也能收到新消息提醒，请在系统设置中允许「己曜」自启动，并将省电策略设为"允许后台高耗电"。', style: TextStyle(fontSize: 13, height: 1.5)),
+        actions: [
+          TextButton(onPressed: () { Navigator.pop(dialogCtx); }, child: const Text('知道了')),
+        ],
+      ));
+      await prefs.setBool('battery_hint_shown', true);
+    } catch (_) {}
+  }
+
   Future<void> _login(UserAccount u) async {
     await SessionStore.save(u, api.token!);
     session.value = u;
     _startHeartbeat();
-    // 登录后延迟注册后台消息轮询（独立保护）
-    Timer(const Duration(seconds: 5), () {
-      initBackgroundPolling().catchError((_) {});
+    // 登录后延迟：通知权限 + 后台轮询 + 厂商后台引导
+    Timer(const Duration(seconds: 3), () async {
+      try { await requestNotificationPermission(); } catch (_) {}
+      try { await initBackgroundPolling(); } catch (_) {}
+      if (session.value != null && context.mounted) await _showBatteryHint(context);
     });
   }
 

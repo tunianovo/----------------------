@@ -52,7 +52,7 @@ void callbackDispatcher() {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
-      if (token == null) return true;
+      if (token == null) { writeBgLog('后台轮询: 未登录，跳过'); return true; }
       final res = await http
           .get(Uri.parse('$kApiBase/conversations'), headers: {'Authorization': 'Bearer $token'})
           .timeout(const Duration(seconds: 20));
@@ -69,6 +69,7 @@ void callbackDispatcher() {
             channelDescription: '收到新私信时提醒', importance: Importance.high, priority: Priority.high);
         await _notif.show(1, '己曜', '你有 $unread 条新消息，快来查看吧', const NotificationDetails(android: android));
       }
+      writeBgLog('后台轮询完成: 未读=' + unread.toString() + ', 上次已提醒=' + last.toString());
       await prefs.setInt('last_notified_unread', unread);
     } catch (e) {
       writeBgLog('后台轮询异常: ' + e.toString());
