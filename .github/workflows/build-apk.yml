@@ -52,14 +52,7 @@ jobs:
           if [ ! -f android/app/keystore.jks ]; then
             keytool -genkeypair -v -keystore android/app/keystore.jks -alias jyao -keyalg RSA -keysize 2048 -validity 10000 -storepass jyao2026 -keypass jyao2026 -dname "CN=jyao,O=jyao,C=CN"
           fi
-          node -e "const fs=require('fs');const f='android/app/build.gradle.kts';let c=fs.readFileSync(f,'utf8');if(!c.includes('isMinifyEnabled')){c=c.replace('release {','release {
-            isMinifyEnabled = false
-            isShrinkResources = false')}c=c.replace('signingConfig = signingConfigs.debug','signingConfig = signingConfigs.create("release") {
-                storeFile = file("keystore.jks")
-                storePassword = "jyao2026"
-                keyAlias = "jyao"
-                keyPassword = "jyao2026"
-            }');fs.writeFileSync(f,c)}"
+          node -e "const fs=require('fs');const f='android/app/build.gradle.kts';let c=fs.readFileSync(f,'utf8');if(!c.includes('isMinifyEnabled')){c=c.replace('release {','release {\n            isMinifyEnabled = false\n            isShrinkResources = false')}c=c.replace('signingConfig = signingConfigs.debug','signingConfig = signingConfigs.create(\"release\") {\n                storeFile = file(\"keystore.jks\")\n                storePassword = \"jyao2026\"\n                keyAlias = \"jyao\"\n                keyPassword = \"jyao2026\"\n            }');fs.writeFileSync(f,c)}"
 
       - name: Apply launcher icons
         run: dart run flutter_launcher_icons
