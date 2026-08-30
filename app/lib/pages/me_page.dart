@@ -97,7 +97,7 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
           ),
         ),
         const SizedBox(height: 8),
-        const Center(child: Text('技能共享 v1.0.0', style: TextStyle(fontSize: 11, color: Colors.black26))),
+        const Center(child: Text('己曜 v1.0.1', style: TextStyle(fontSize: 11, color: Colors.black26))),
       ]),
     );
   }

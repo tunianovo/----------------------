@@ -4,7 +4,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-const String kApiBase = 'https://plain-bird-80fa.pukejan.workers.dev';
+const String kApiBase = 'https://azhegezhege.pages.dev/api';
 const String kSiteBase = 'https://azhegezhege.pages.dev';
 
 class ApiException implements Exception {

@@ -78,7 +78,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Center(child: Text('技能共享', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5))),
+                  const Center(child: Text('己曜', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5))),
                   const Center(child: Text('让每一项技能都有价值', style: TextStyle(fontSize: 13, color: Colors.black45))),
                   const SizedBox(height: 32),
                   SegmentedButton<bool>(
@@ -139,7 +139,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 12),
                   const Center(
-                    child: Text('测试账号 editor01 / 123456', style: TextStyle(fontSize: 12, color: Colors.black38)),
+                    child: Text('己曜 · 让每一项技能都有价值', style: TextStyle(fontSize: 12, color: Colors.black38)),
                   ),
                 ],
               ),

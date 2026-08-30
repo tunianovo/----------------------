@@ -840,7 +840,7 @@ function openChatFromOrder(chatKey) {
 // 私信数据走后端 Cloudflare Worker + D1 数据库，登录/注册/服务/订单仍用 localStorage。
 // 当前仅支持文本消息，无 websocket：新消息靠每10秒轮询拉取。
 
-const API_BASE = "https://plain-bird-80fa.pukejan.workers.dev";
+const API_BASE = "https://azhegezhege.pages.dev/api";
 
 let msgUnreadCache = {};   // 对方userId字符串 -> 未读数（本地缓存，供角标/订单页显示）
 let msgPolling = false;    // 轮询锁，防止并发请求堆积

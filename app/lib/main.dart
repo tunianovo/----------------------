@@ -29,7 +29,7 @@ class JsgxApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '技能共享',
+      title: '己曜',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       home: AppGate(initialUser: initialUser),
