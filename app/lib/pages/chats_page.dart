@@ -11,10 +11,10 @@ class ChatsPage extends StatefulWidget {
   final UserAccount me;
   const ChatsPage({super.key, required this.me});
   @override
-  State<ChatsPage> createState() => _ChatsPageState();
+  State<ChatsPage> createState() => ChatsPageState();
 }
 
-class _ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin {
+class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin {
   List<Conversation>? items;
   String? error;
 
@@ -28,6 +28,9 @@ class _ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixi
     // 每5秒轮询新消息/在线状态
     Stream.periodic(const Duration(seconds: 5)).listen((_) { if (mounted) _load(silent: true); });
   }
+
+  // 供外部（切tab时）立即刷新
+  void refresh() => _load(silent: true);
 
   Future<void> _load({bool silent = false}) async {
     try {

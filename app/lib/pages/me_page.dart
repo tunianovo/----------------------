@@ -9,9 +9,11 @@ import 'chat_page.dart';
 
 class MePage extends StatefulWidget {
   final UserAccount me;
+  final String role;
+  final void Function(String) onRoleChanged;
   final VoidCallback onLogout;
-  final void Function(UserAccount) onMeUpdated;
-  const MePage({super.key, required this.me, required this.onLogout, required this.onMeUpdated});
+  final VoidCallback onCheckUpdate;
+  const MePage({super.key, required this.me, required this.role, required this.onRoleChanged, required this.onLogout, required this.onCheckUpdate});
   @override
   State<MePage> createState() => _MePageState();
 }
@@ -61,6 +63,32 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
           ),
         ),
         const SizedBox(height: 14),
+        // 身份切换（用户端 / 技术端）
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('身份切换', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              const Text('技术端可发布服务、切换到技能市场视角', style: TextStyle(fontSize: 12, color: Colors.black45)),
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'user', icon: Icon(Icons.person_outline, size: 18), label: Text('用户端')),
+                  ButtonSegment(value: 'tech', icon: Icon(Icons.engineering_outlined, size: 18), label: Text('技术端')),
+                ],
+                selected: {widget.role},
+                onSelectionChanged: (s) { if (s.first != widget.role) widget.onRoleChanged(s.first); },
+                style: SegmentedButton.styleFrom(
+                  selectedBackgroundColor: kPrimary,
+                  selectedForegroundColor: Colors.white,
+                  showSelectedIcon: false,
+                ),
+              ),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 14),
         // 订单
         Card(
           clipBehavior: Clip.antiAlias,
@@ -76,6 +104,17 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
           ]),
         ),
         const SizedBox(height: 14),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+            leading: const Icon(Icons.system_update_outlined, color: kPrimary),
+            title: const Text('检查更新', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('当前版本 v1.0.2', style: TextStyle(fontSize: 12, color: Colors.black38)),
+            onTap: widget.onCheckUpdate,
+          ),
+        ),
+        const SizedBox(height: 10),
         Card(
           clipBehavior: Clip.antiAlias,
           child: ListTile(
@@ -97,7 +136,7 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
           ),
         ),
         const SizedBox(height: 8),
-        const Center(child: Text('己曜 v1.0.1', style: TextStyle(fontSize: 11, color: Colors.black26))),
+        const Center(child: Text('己曜 v1.0.2', style: TextStyle(fontSize: 11, color: Colors.black26))),
       ]),
     );
   }

@@ -1,7 +1,7 @@
 name: jsgx_app
 description: "技能共享平台手机客户端 - 聊天/服务市场/在线状态"
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -11,6 +11,7 @@ dependencies:
     sdk: flutter
   http: ^1.2.0
   shared_preferences: ^2.2.3
+  url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:

@@ -63,8 +63,8 @@ jobs:
       - name: Create/Update release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: app-v1.0.1
-          name: 己曜 App v1.0.1
+          tag_name: app-v1.0.2
+          name: 己曜 App v1.0.2
           body: |
             己曜（技能共享平台）安卓客户端 v1.0.1：更换品牌名与图标，API 迁移至国内可达域名，修复登录网络问题
             - 账号登录注册（与网站数据互通）

@@ -9,7 +9,8 @@ import 'chat_page.dart';
 
 class MarketPage extends StatefulWidget {
   final UserAccount me;
-  const MarketPage({super.key, required this.me});
+  final bool isTech;
+  const MarketPage({super.key, required this.me, this.isTech = false});
   @override
   State<MarketPage> createState() => _MarketPageState();
 }
@@ -18,6 +19,8 @@ class _MarketPageState extends State<MarketPage> {
   List<ServiceItem>? items;
   String? error;
   String keyword = '';
+  String category = '全部';
+  static const categories = ['全部', '线上数字服务', '手作实物定制', '同城线下劳务'];
 
   @override
   void initState() {
@@ -27,7 +30,7 @@ class _MarketPageState extends State<MarketPage> {
 
   Future<void> _load() async {
     try {
-      final list = await api.services();
+      final list = await api.services(mine: widget.isTech);
       if (!mounted) return;
       setState(() { items = list; error = null; });
     } on ApiException catch (e) {
@@ -39,10 +42,23 @@ class _MarketPageState extends State<MarketPage> {
     }
   }
 
+  Future<void> _publish() async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => _PublishSheet(onDone: _load),
+    );
+  }
+
   List<ServiceItem> get _filtered {
-    final all = items ?? [];
-    if (keyword.isEmpty) return all;
-    return all.where((s) => s.title.contains(keyword) || s.desc.contains(keyword) || s.tags.any((t) => t.contains(keyword))).toList();
+    var all = items ?? [];
+    if (category != '全部') all = all.where((s) => s.serviceType == category).toList();
+    if (keyword.isNotEmpty) {
+      all = all.where((s) => s.title.contains(keyword) || s.desc.contains(keyword) || s.tags.any((t) => t.contains(keyword))).toList();
+    }
+    return all;
   }
 
   Future<void> _openDetail(ServiceItem s) async {
@@ -58,7 +74,16 @@ class _MarketPageState extends State<MarketPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('服务市场')),
+      appBar: AppBar(title: Text(widget.isTech ? '技能市场' : '服务市场')),
+      floatingActionButton: widget.isTech
+          ? FloatingActionButton.extended(
+              onPressed: _publish,
+              backgroundColor: kPrimary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text('发布服务'),
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: _load,
         color: kPrimary,
@@ -76,10 +101,34 @@ class _MarketPageState extends State<MarketPage> {
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             child: TextField(
               onChanged: (v) => setState(() => keyword = v.trim()),
               decoration: const InputDecoration(hintText: '搜索服务、技能…', prefixIcon: Icon(Icons.search)),
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 52,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              scrollDirection: Axis.horizontal,
+              itemCount: categories.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                final c = categories[i];
+                final selected = category == c;
+                return ChoiceChip(
+                  label: Text(c),
+                  selected: selected,
+                  selectedColor: kPrimary,
+                  labelStyle: TextStyle(fontSize: 12, color: selected ? Colors.white : Colors.black54),
+                  showCheckmark: false,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() => category = c),
+                );
+              },
             ),
           ),
         ),
@@ -269,6 +318,100 @@ class _DetailSheet extends StatelessWidget {
             ])
           else
             const Center(child: Text('这是你发布的服务', style: TextStyle(color: Colors.black38, fontSize: 13))),
+        ]),
+      ),
+    );
+  }
+}
+
+// ---------- 发布服务表单（技术端） ----------
+class _PublishSheet extends StatefulWidget {
+  final VoidCallback onDone;
+  const _PublishSheet({required this.onDone});
+  @override
+  State<_PublishSheet> createState() => _PublishSheetState();
+}
+
+class _PublishSheetState extends State<_PublishSheet> {
+  final _title = TextEditingController();
+  final _desc = TextEditingController();
+  final _price = TextEditingController();
+  final _sub = TextEditingController();
+  final _tags = TextEditingController();
+  String serviceType = '线上数字服务';
+  static const types = ['线上数字服务', '手作实物定制', '同城线下劳务'];
+  bool busy = false;
+
+  Future<void> _submit() async {
+    final title = _title.text.trim();
+    final desc = _desc.text.trim();
+    final price = double.tryParse(_price.text.trim());
+    if (title.isEmpty || desc.isEmpty || price == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('标题、描述、价格都要填写哦'),
+          behavior: SnackBarBehavior.floating));
+      return;
+    }
+    setState(() => busy = true);
+    try {
+      await api.publishService(
+        title: title,
+        desc: desc,
+        price: price,
+        serviceType: serviceType,
+        subCategory: _sub.text.trim(),
+        tags: _tags.text.split(RegExp('[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('发布成功！你的服务已上架'),
+          backgroundColor: kPrimary, behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      widget.onDone();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message),
+          backgroundColor: const Color(0xFFE5484D), behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 14),
+          const Text('发布服务', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 14),
+          TextField(controller: _title, decoration: const InputDecoration(hintText: '服务标题，如：短视频剪辑与后期')),
+          const SizedBox(height: 10),
+          TextField(controller: _desc, maxLines: 3, decoration: const InputDecoration(hintText: '服务描述：内容、交付时间、修改次数等')),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: TextField(controller: _price, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(hintText: '价格（元）', prefixIcon: Icon(Icons.payments_outlined)))),
+            const SizedBox(width: 10),
+            Expanded(child: DropdownButtonFormField<String>(
+              value: serviceType,
+              decoration: const InputDecoration(hintText: '类型'),
+              items: types.map((t) => DropdownMenuItem(value: t, child: Text(t, style: const TextStyle(fontSize: 13)))).toList(),
+              onChanged: (v) => setState(() => serviceType = v ?? serviceType),
+            )),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: TextField(controller: _sub, decoration: const InputDecoration(hintText: '细分（选填），如：PPT制作'))),
+            const SizedBox(width: 10),
+            Expanded(child: TextField(controller: _tags, decoration: const InputDecoration(hintText: '标签，逗号分隔'))),
+          ]),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: busy ? null : _submit, child: busy
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('发布上架')),
+          const SizedBox(height: 6),
         ]),
       ),
     );

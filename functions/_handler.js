@@ -115,9 +115,35 @@ async function ensureSeedUsers(env) {
     )
   `).run();
 
+  // v4：多设备会话表 —— 网站和App同时登录互不顶号（此前单token设计，后登录会挤掉先登录的）
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.chat_db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`).run();
+
+  // v4：共创项目（原网站为本地数据，App需要统一数据源）
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_name TEXT NOT NULL,
+      project_desc TEXT NOT NULL,
+      creator_id INTEGER NOT NULL,
+      total_budget REAL NOT NULL DEFAULT 0,
+      status TEXT DEFAULT 'recruiting',
+      members TEXT DEFAULT '[]',
+      need_skills TEXT DEFAULT '[]',
+      created_at INTEGER NOT NULL
+    )
+  `).run();
+
   const { results } = await env.chat_db.prepare("SELECT COUNT(*) AS c FROM users").all();
   if (Number(results[0].c) > 0) {
     await seedServicesIfEmpty(env);
+    await seedProjectsIfEmpty(env);
     return;
   }
 
@@ -142,8 +168,7 @@ async function ensureSeedUsers(env) {
 }
 
 // 服务种子数据（与网站本地数据一致；cover 为网站静态图相对路径）。表为空时才插入
-async function seedServicesIfEmpty(env) {
-  const svc = await env.chat_db.prepare("SELECT COUNT(*) AS c FROM services").all();
+async function seedServicesIfEmpty(env) {  const svc = await env.chat_db.prepare("SELECT COUNT(*) AS c FROM services").all();
   if (Number(svc.results[0].c) > 0) return;
   const seedServices = [
     { user_id: 1, title: '短视频剪辑与后期', service_desc: '提供短视频剪辑、字幕添加、BGM配乐、调色服务，支持抖音/小红书/B站等平台格式输出，24小时内交付。', price: 80, service_type: '线上数字服务', sub_category: '短视频剪辑', tags: ['剪辑','调色','字幕'], cover: 'images/task-clip.jpg' },
@@ -163,12 +188,32 @@ async function seedServicesIfEmpty(env) {
   }
 }
 
-// 从 Authorization 头解析登录用户
+// 共创项目种子数据（与网站一致）。表为空时才插入
+async function seedProjectsIfEmpty(env) {
+  const p = await env.chat_db.prepare("SELECT COUNT(*) AS c FROM projects").all();
+  if (Number(p.results[0].c) > 0) return;
+  const seeds = [
+    { creator_id: 1, project_name: '校园短视频创作团队', project_desc: '组建一支校园短视频创作团队，共同打造校园生活类短视频，分工包括编剧、拍摄、剪辑、运营，收益按贡献分配。', total_budget: 500, need_skills: ['编剧', '拍摄', '运营'], members: [{ user_id: 1, role: '发起人/剪辑' }] },
+    { creator_id: 2, project_name: '大创比赛PPT与答辩支持', project_desc: '为参加大创比赛的团队提供PPT制作、答辩模拟、视觉设计支持，需要设计和演讲能力的同学加入。', total_budget: 300, need_skills: ['PPT设计', '答辩', '文案'], members: [{ user_id: 2, role: '发起人/设计' }] },
+  ];
+  for (const s of seeds) {
+    await env.chat_db.prepare(`
+      INSERT INTO projects (project_name, project_desc, creator_id, total_budget, status, members, need_skills, created_at)
+      VALUES (?,?,?,?,'recruiting',?,?,?)
+    `).bind(s.project_name, s.project_desc, s.creator_id, s.total_budget, JSON.stringify(s.members), JSON.stringify(s.need_skills), Date.now()).run();
+  }
+}
+
+// 从 Authorization 头解析登录用户：先查多设备会话表，再兼容旧的单 token 字段
 async function getAuthUser(env, request) {
   const auth = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
   if (!auth) return null;
-  const { results } = await env.chat_db.prepare("SELECT * FROM users WHERE token = ?").bind(auth).all();
-  return results[0] || null;
+  const s = await env.chat_db.prepare(`
+    SELECT u.* FROM sessions se JOIN users u ON u.id = se.user_id WHERE se.token = ?
+  `).bind(auth).all();
+  if (s.results.length) return s.results[0];
+  const legacy = await env.chat_db.prepare("SELECT * FROM users WHERE token = ?").bind(auth).all();
+  return legacy.results[0] || null;
 }
 
 export async function handler(request, env, ctx) {
@@ -183,7 +228,7 @@ export async function handler(request, env, ctx) {
       return json({
         ok: true,
         service: 'chat-api',
-        version: 'v2',
+        version: 'v4',
         endpoints: ['/register', '/login', '/users', '/me', '/send', '/history', '/read', '/conversations'],
         time: Date.now()
       });
@@ -215,10 +260,11 @@ export async function handler(request, env, ctx) {
         INSERT INTO users (username, password_hash, real_name, user_type, skill_tag, phone, avatar, token, created_at)
         VALUES (?,?,?,?,?,?,?,?,?)
       `).bind(user.username, user.password_hash, user.real_name, user.user_type, user.skill_tag, user.phone, user.avatar, user.token, user.created_at).run();
+      await env.chat_db.prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)").bind(user.token, res.meta.last_row_id, Date.now()).run();
       return json({ ok: true, user: { ...publicUser(user), id: res.meta.last_row_id }, token: user.token });
     }
 
-    // 登录 POST /login {username,password} -> 返回 user + 新 token
+    // 登录 POST /login {username,password} -> 返回 user + 新 token（多设备会话，互不顶号）
     if (url.pathname === '/login' && request.method === 'POST') {
       const b = await readBody();
       const username = String(b.username || '').trim();
@@ -226,6 +272,8 @@ export async function handler(request, env, ctx) {
       const u = results[0];
       if (!u || !(await verifyPassword(String(b.password || ''), u.password_hash))) return json({ error: '账号或密码错误' }, 401);
       const token = newToken();
+      await env.chat_db.prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)").bind(token, u.id, Date.now()).run();
+      // 兼容旧字段（无实际鉴权作用，仅标记最近一次登录）
       await env.chat_db.prepare("UPDATE users SET token = ? WHERE id = ?").bind(token, u.id).run();
       return json({ ok: true, user: publicUser({ ...u, token }), token });
     }
@@ -336,13 +384,20 @@ export async function handler(request, env, ctx) {
       return json(convs);
     }
 
-    // 服务市场 GET /services （公开；带卖家昵称/在线状态）
+    // 服务市场 GET /services （公开；?mine=1 需登录，返回自己发布的）
     if (url.pathname === '/services' && request.method === 'GET') {
+      let mineFilter = null;
+      if (q.get('mine') === '1') {
+        const mu = await getAuthUser(env, request);
+        if (!mu) return json({ error: '未登录或登录已过期' }, 401);
+        mineFilter = Number(mu.id);
+      }
       const { results } = await env.chat_db.prepare(`
         SELECT s.*, u.real_name AS seller_name, u.username AS seller_username, u.avatar AS seller_avatar, u.last_seen AS seller_last_seen
         FROM services s LEFT JOIN users u ON u.id = s.user_id
-        WHERE s.status = 1 ORDER BY s.created_at DESC
-      `).all();
+        WHERE s.status = 1 ${mineFilter != null ? 'AND s.user_id = ?' : ''}
+        ORDER BY s.created_at DESC
+      `).bind(...(mineFilter != null ? [mineFilter] : [])).all();
       return json(results.map(r => ({
         id: Number(r.id),
         user_id: Number(r.user_id),
@@ -405,6 +460,72 @@ export async function handler(request, env, ctx) {
         order_status: Number(r.order_status),
         created_at: Number(r.created_at)
       })));
+    }
+
+    // 发布服务 POST /services {title, service_desc, price, service_type, sub_category, tags}
+    if (url.pathname === '/services' && request.method === 'POST') {
+      const b = await readBody();
+      const title = String(b.title || '').trim();
+      const desc = String(b.service_desc || '').trim();
+      const price = Number(b.price);
+      const serviceType = String(b.service_type || '').trim();
+      if (!title || !desc || !price || !serviceType) return json({ error: '标题、描述、价格、类型不能为空' }, 400);
+      if (Number(me.user_type) !== 1) return json({ error: '仅技能提供者（技术端）可发布服务' }, 403);
+      const coverMap = { '线上数字服务': 'images/task-code.jpg', '手作实物定制': 'images/task-handmade.jpg', '同城线下劳务': 'images/task-photo.jpg' };
+      const res = await env.chat_db.prepare(`
+        INSERT INTO services (user_id, title, service_desc, price, service_type, sub_category, tags, cover, status, created_at)
+        VALUES (?,?,?,?,?,?,?,?,1,?)
+      `).bind(Number(me.id), title, desc, price, serviceType, String(b.sub_category || ''),
+        JSON.stringify(Array.isArray(b.tags) ? b.tags : []), String(b.cover || coverMap[serviceType] || 'images/task-design.jpg'), Date.now()).run();
+      return json({ ok: true, service_id: res.meta.last_row_id });
+    }
+
+    // 共创项目列表 GET /projects （公开）
+    if (url.pathname === '/projects' && request.method === 'GET') {
+      const { results } = await env.chat_db.prepare(`
+        SELECT p.*, u.real_name AS creator_name, u.last_seen AS creator_last_seen
+        FROM projects p LEFT JOIN users u ON u.id = p.creator_id
+        ORDER BY p.created_at DESC
+      `).all();
+      return json(results.map(r => {
+        let members = [], skills = [];
+        try { members = JSON.parse(r.members || '[]'); } catch {}
+        try { skills = JSON.parse(r.need_skills || '[]'); } catch {}
+        return {
+          id: Number(r.id),
+          project_name: r.project_name,
+          project_desc: r.project_desc,
+          creator_id: Number(r.creator_id),
+          creator_name: r.creator_name || '用户',
+          creator_online: !!(r.creator_last_seen && (Date.now() - Number(r.creator_last_seen)) < ONLINE_WINDOW),
+          total_budget: Number(r.total_budget),
+          status: r.status,
+          members,
+          member_count: members.length,
+          need_skills: skills,
+          created_at: Number(r.created_at)
+        };
+      }));
+    }
+
+    // 加入共创项目 POST /projects/join {project_id, role?}：加入并给发起人发消息建立会话
+    if (url.pathname === '/projects/join' && request.method === 'POST') {
+      const b = await readBody();
+      const projectId = Number(b.project_id);
+      if (!projectId) return json({ error: '缺少 project_id' }, 400);
+      const { results } = await env.chat_db.prepare("SELECT * FROM projects WHERE id = ?").bind(projectId).all();
+      const proj = results[0];
+      if (!proj) return json({ error: '项目不存在' }, 404);
+      if (Number(proj.creator_id) === Number(me.id)) return json({ error: '这是你发起的项目' }, 400);
+      let members = [];
+      try { members = JSON.parse(proj.members || '[]'); } catch {}
+      if (members.some(m => Number(m.user_id) === Number(me.id))) return json({ error: '你已加入该项目' }, 400);
+      members.push({ user_id: Number(me.id), role: String(b.role || '成员') });
+      await env.chat_db.prepare("UPDATE projects SET members = ? WHERE id = ?").bind(JSON.stringify(members), projectId).run();
+      await env.chat_db.prepare(`
+        INSERT INTO private_messages (sender_id, receiver_id, content, create_time, is_read) VALUES (?,?,?,?,0)
+      `).bind(Number(me.id), Number(proj.creator_id), `【共创】${me.real_name} 申请加入你的项目「${proj.project_name}」，快聊聊吧～`, Date.now()).run();
+      return json({ ok: true, member_count: members.length });
     }
 
     return json({ msg: 'route not found' }, 404);

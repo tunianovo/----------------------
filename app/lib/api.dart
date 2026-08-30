@@ -161,9 +161,43 @@ class ServiceItem {
   String get coverUrl => cover.startsWith('http') ? cover : '$kSiteBase/$cover';
 }
 
-class OrderItem {
+class ProjectItem {
   final int id;
-  final String? serviceTitle;
+  final String name;
+  final String desc;
+  final int creatorId;
+  final String creatorName;
+  final bool creatorOnline;
+  final double budget;
+  final int memberCount;
+  final List<String> needSkills;
+  ProjectItem({
+    required this.id,
+    required this.name,
+    required this.desc,
+    required this.creatorId,
+    required this.creatorName,
+    required this.creatorOnline,
+    required this.budget,
+    required this.memberCount,
+    required this.needSkills,
+  });
+
+  factory ProjectItem.fromJson(dynamic j) => ProjectItem(
+        id: (j['id'] as num).toInt(),
+        name: (j['project_name'] ?? '') as String,
+        desc: (j['project_desc'] ?? '') as String,
+        creatorId: (j['creator_id'] as num).toInt(),
+        creatorName: (j['creator_name'] ?? '用户') as String,
+        creatorOnline: j['creator_online'] == true,
+        budget: (j['total_budget'] as num?)?.toDouble() ?? 0,
+        memberCount: (j['member_count'] as num?)?.toInt() ?? 0,
+        needSkills: ((j['need_skills'] as List?) ?? []).map((e) => e.toString()).toList(),
+      );
+}
+
+class OrderItem {
+  final int id;  final String? serviceTitle;
   final String? serviceCover;
   final int buyerId;
   final int sellerId;
@@ -210,6 +244,8 @@ class OrderItem {
 
 class Api {
   String? token;
+  /// 401（登录过期）时的全局回调，由 App 入口设置：清会话并回到登录页
+  void Function()? onUnauthorized;
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -228,7 +264,10 @@ class Api {
     } catch (e) {
       throw ApiException('网络连接失败，请检查网络');
     }
-    if (res.statusCode == 401) throw ApiException('登录已过期，请重新登录');
+    if (res.statusCode == 401) {
+      onUnauthorized?.call();
+      throw ApiException('登录已过期，请重新登录');
+    }
     dynamic data;
     try {
       data = jsonDecode(utf8.decode(res.bodyBytes));
@@ -311,9 +350,37 @@ class Api {
   }
 
   // ---- 服务市场 ----
-  Future<List<ServiceItem>> services() async {
-    final d = await _send('GET', '/services');
+  Future<List<ServiceItem>> services({bool mine = false}) async {
+    final d = await _send('GET', '/services', query: mine ? {'mine': '1'} : null);
     return (d as List).map(ServiceItem.fromJson).toList();
+  }
+
+  Future<void> publishService({
+    required String title,
+    required String desc,
+    required double price,
+    required String serviceType,
+    String subCategory = '',
+    List<String> tags = const [],
+  }) async {
+    await _send('POST', '/services', body: {
+      'title': title,
+      'service_desc': desc,
+      'price': price,
+      'service_type': serviceType,
+      'sub_category': subCategory,
+      'tags': tags,
+    });
+  }
+
+  // ---- 共创项目 ----
+  Future<List<ProjectItem>> projects() async {
+    final d = await _send('GET', '/projects');
+    return (d as List).map(ProjectItem.fromJson).toList();
+  }
+
+  Future<void> joinProject(int projectId, {String role = '成员'}) async {
+    await _send('POST', '/projects/join', body: {'project_id': projectId, 'role': role});
   }
 
   // ---- 订单 ----
