@@ -24,7 +24,7 @@ final Api api = Api();
 final ValueNotifier<UserAccount?> session = ValueNotifier(null);
 
 /// 当前 App 版本（与 pubspec.yaml 保持一致；用于更新检查）
-const String kAppVersion = '1.1.3';
+const String kAppVersion = '1.2.2';
 
 /// 崩溃日志写入（同步写，闪退前尽量落盘）
 void writeCrashLog(String what, Object error, StackTrace? st) {
@@ -64,7 +64,6 @@ Future<void> main() async {
       Timer(const Duration(seconds: 3), () async {
         try { await requestNotificationPermission(); } catch (_) {}
         try { await initBackgroundPolling(); } catch (_) {}
-        if (session.value != null) await _showBatteryHint();
       });
     }
   }, (error, stack) {
