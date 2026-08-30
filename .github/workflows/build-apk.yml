@@ -39,6 +39,16 @@ jobs:
           # 应用名称
           sed -i 's/android:label="jsgx_app"/android:label="己曜"/' android/app/src/main/AndroidManifest.xml
           # 发布版需要显式声明网络权限
+          # flutter_local_notifications 需要核心库脱糖
+          sed -i 's|targetCompatibility = JavaVersion.VERSION_11|targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true|' android/app/build.gradle.kts || true
+          sed -i 's|targetCompatibility JavaVersion.VERSION_11|targetCompatibility JavaVersion.VERSION_11
+        coreLibraryDesugaringEnabled true|' android/app/build.gradle || true
+          printf '
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
+' >> android/app/build.gradle.kts
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><application|' android/app/src/main/AndroidManifest.xml
 
       - name: Apply launcher icons
