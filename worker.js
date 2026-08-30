@@ -119,6 +119,17 @@ export default {
     await ensureSeed(env);
     const readBody = async () => { try { return await request.json(); } catch { return {}; } };
 
+    // 根路径：API 状态信息（浏览器直接访问可确认部署成功）
+    if (url.pathname === '/') {
+      return json({
+        ok: true,
+        service: 'chat-api',
+        version: 'v2',
+        endpoints: ['/register', '/login', '/users', '/me', '/send', '/history', '/read', '/conversations'],
+        time: Date.now()
+      });
+    }
+
     // ---------- 公开接口 ----------
 
     // 注册 POST /register {username,password,real_name,user_type,skill_tag,phone,avatar}
@@ -172,8 +183,9 @@ export default {
     }
 
     // ---------- 以下接口需要登录（token） ----------
-    const me = await getAuthUser(env, request);
-    if (!me) return json({ error: '未登录或登录已过期' }, 401);
+    const PROTECTED = ['/me', '/send', '/history', '/read', '/conversations'];
+    const me = PROTECTED.includes(url.pathname) ? await getAuthUser(env, request) : null;
+    if (PROTECTED.includes(url.pathname) && !me) return json({ error: '未登录或登录已过期' }, 401);
 
     // 当前用户资料 GET /me
     if (url.pathname === '/me' && request.method === 'GET') return json(publicUser(me));
