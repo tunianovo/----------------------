@@ -153,7 +153,8 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
         ),
         centerTitle: true,
         actions: [
-          IconButton(onPressed: _newChat, icon: const Icon(Icons.add_comment_outlined), tooltip: '按账号发起聊天'),
+          IconButton(onPressed: _createGroup, icon: const Icon(Icons.group_add), tooltip: '发起群聊'),
+          IconButton(onPressed: _showAddMenu, icon: const Icon(Icons.add_comment_outlined), tooltip: '按账号发起聊天'),
         ],
       ),
       body: chatsView == 'msgs' ? _msgsView() : _usersView(),
@@ -188,20 +189,23 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
                         itemBuilder: (_, i) {
                           final u = list[i];
                           return ListTile(
-                            leading: Stack(children: [
-                              UserAvatar(url: u.avatar, name: u.displayName, radius: 22),
-                              if (u.online)
-                                Positioned(right: 0, bottom: 0, child: Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                                  child: const OnlineDot(size: 8))),
-                            ]),
+                            leading: GestureDetector(
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: u.id))),
+                              child: Stack(children: [
+                                UserAvatar(url: u.avatar, name: u.displayName, radius: 22),
+                                if (u.online)
+                                  Positioned(right: 0, bottom: 0, child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                    child: const OnlineDot(size: 8))),
+                              ]),
+                            ),
                             title: Text(u.displayName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
                             subtitle: Text(u.userType == 1 ? (u.skillTag.isNotEmpty ? u.skillTag : '技能提供者') : '账号: ${u.username}',
                                 maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.black45)),
                             trailing: Text(u.online ? '在线' : '', style: const TextStyle(fontSize: 11, color: kOnline)),
                             onTap: () async {
-                              await Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: u.id)));
+                              await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: u.id, peerName: u.displayName, meId: widget.me.id)));
                               _load(silent: true);
                             },
                           );
