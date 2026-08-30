@@ -82,7 +82,6 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
                 style: SegmentedButton.styleFrom(
                   selectedBackgroundColor: kPrimary,
                   selectedForegroundColor: Colors.white,
-                  showSelectedIcon: false,
                 ),
               ),
             ]),

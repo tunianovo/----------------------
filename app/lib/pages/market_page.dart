@@ -363,7 +363,7 @@ class _PublishSheetState extends State<_PublishSheet> {
       );
       if (!mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('发布成功！你的服务已上架'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('发布成功！你的服务已上架'),
           backgroundColor: kPrimary, behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
       widget.onDone();
