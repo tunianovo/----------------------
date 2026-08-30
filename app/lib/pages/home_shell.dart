@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../main.dart';
 import 'market_page.dart';
-import 'projects_page.dart';
+import 'support_page.dart';
 import 'chats_page.dart';
 import 'me_page.dart';
 
@@ -48,7 +48,7 @@ class _HomeShellState extends State<HomeShell> {
         index: tab,
         children: [
           MarketPage(me: widget.me, isTech: role == 'tech'),
-          ProjectsPage(me: widget.me),
+          SupportPage(me: widget.me),
           ChatsPage(key: _chatsKey, me: widget.me),
           MePage(
             me: widget.me,
@@ -67,7 +67,7 @@ class _HomeShellState extends State<HomeShell> {
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: '服务'),
-          NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups), label: '共创'),
+          NavigationDestination(icon: Icon(Icons.support_agent_outlined), selectedIcon: Icon(Icons.support_agent), label: '客服'),
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '消息'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
         ],

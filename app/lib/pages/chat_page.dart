@@ -3,6 +3,8 @@
 // ============================================================
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../api.dart';
 import '../main.dart';
 import '../theme.dart';
@@ -61,6 +63,25 @@ class _ChatPageState extends State<ChatPage> {
       }
     });
   }
+
+  // 发送当前位置（消息内容为【位置】纬度,经度，点气泡可打开地图）
+  Future<void> _sendLocation() async {
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未授权定位权限，请在系统设置中开启'), behavior: SnackBarBehavior.floating));
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition();
+      _controller.text = '【位置】${pos.latitude.toStringAsFixed(6)},${pos.longitude.toStringAsFixed(6)}';
+      await _send();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('获取定位失败，请重试'), behavior: SnackBarBehavior.floating));
+    }
+  }
+
+  bool _isLocation(String text) => text.startsWith('【位置】') && RegExp(r'^【位置】-?\d+\.\d+,-?\d+\.\d+$').hasMatch(text);
 
   Future<void> _send() async {
     final text = _controller.text.trim();
@@ -158,7 +179,29 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ),
             child: Column(crossAxisAlignment: isSelf ? CrossAxisAlignment.end : CrossAxisAlignment.start, children: [
-              Text(m.content, style: TextStyle(fontSize: 15, height: 1.45, color: isSelf ? Colors.white : Colors.black87)),
+              if (_isLocation(m.content))
+                // 位置消息卡片：点开高德地图查看
+                GestureDetector(
+                  onTap: () {
+                    final coord = m.content.substring(4).split(',');
+                    final url = 'https://uri.amap.com/marker?position=${coord[1]},${coord[0]}&name=对方分享的位置';
+                    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(color: isSelf ? Colors.white.withOpacity(0.15) : const Color(0xFFF0F2F5), borderRadius: BorderRadius.circular(10)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.location_on, size: 30, color: isSelf ? Colors.white : kPrimary),
+                      const SizedBox(width: 8),
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('位置信息', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isSelf ? Colors.white : Colors.black87)),
+                        Text('点击查看地图', style: TextStyle(fontSize: 10, color: isSelf ? Colors.white70 : Colors.black38)),
+                      ]),
+                    ]),
+                  ),
+                )
+              else
+                Text(m.content, style: TextStyle(fontSize: 15, height: 1.45, color: isSelf ? Colors.white : Colors.black87)),
               const SizedBox(height: 3),
               Text(_time(m.createTime), style: TextStyle(fontSize: 9, color: isSelf ? Colors.white70 : Colors.black26)),
             ]),
@@ -174,6 +217,12 @@ class _ChatPageState extends State<ChatPage> {
         child: SafeArea(
           top: false,
           child: Row(children: [
+            // 发送当前位置
+            GestureDetector(
+              onTap: _sendLocation,
+              child: Container(width: 40, height: 44, alignment: Alignment.center,
+                  child: const Icon(Icons.location_on_outlined, color: kPrimary, size: 24)),
+            ),
             Expanded(
               child: TextField(
                 controller: _controller,

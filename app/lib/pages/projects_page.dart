@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../main.dart';
+import '../cache.dart';
 import '../theme.dart';
 import 'chat_page.dart';
 
@@ -29,6 +30,12 @@ class _ProjectsPageState extends State<ProjectsPage> with AutomaticKeepAliveClie
   }
 
   Future<void> _load() async {
+    if (items == null) {
+      final cached = await LocalCache.get('projects');
+      if (cached != null && mounted) {
+        setState(() => items = (cached as List).map(ProjectItem.fromJson).toList());
+      }
+    }
     try {
       final list = await api.projects();
       if (!mounted) return;

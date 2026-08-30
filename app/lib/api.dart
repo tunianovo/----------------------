@@ -3,6 +3,7 @@
 // ============================================================
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'cache.dart';
 
 const String kApiBase = 'https://azhegezhege.pages.dev/api';
 const String kSiteBase = 'https://azhegezhege.pages.dev';
@@ -196,6 +197,44 @@ class ProjectItem {
       );
 }
 
+class TaskItem {
+  final int id;
+  final String title;
+  final String desc;
+  final double budget;
+  final String deadline;
+  final int publisherId;
+  final String publisherName;
+  final bool publisherOnline;
+  final int? takerId;
+  final int status; // 0 待接单 1 已接单
+  TaskItem({
+    required this.id,
+    required this.title,
+    required this.desc,
+    required this.budget,
+    required this.deadline,
+    required this.publisherId,
+    required this.publisherName,
+    required this.publisherOnline,
+    this.takerId,
+    required this.status,
+  });
+
+  factory TaskItem.fromJson(dynamic j) => TaskItem(
+        id: (j['id'] as num).toInt(),
+        title: (j['title'] ?? '') as String,
+        desc: (j['task_desc'] ?? '') as String,
+        budget: (j['budget'] as num?)?.toDouble() ?? 0,
+        deadline: (j['deadline'] ?? '') as String,
+        publisherId: (j['publisher_id'] as num).toInt(),
+        publisherName: (j['publisher_name'] ?? '用户') as String,
+        publisherOnline: j['publisher_online'] == true,
+        takerId: (j['taker_id'] as num?)?.toInt(),
+        status: (j['status'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class OrderItem {
   final int id;  final String? serviceTitle;
   final String? serviceCover;
@@ -278,6 +317,15 @@ class Api {
       final msg = data is Map && data['error'] != null ? data['error'] as String : '请求失败 (${res.statusCode})';
       throw ApiException(msg);
     }
+    // 成功的列表数据写入本地缓存，供下次秒开
+    if (data is List) {
+      for (final entry in const {'/services': 'services', '/conversations': 'conversations', '/tasks': 'tasks', '/orders': 'orders', '/projects': 'projects'}) {
+        if (path.startsWith(entry)) {
+          LocalCache.put(entry.substring(1), data);
+          break;
+        }
+      }
+    }
     return data;
   }
 
@@ -289,6 +337,7 @@ class Api {
     int userType = 0,
     String skillTag = '',
     String phone = '',
+    String smsCode = '',
   }) async {
     final d = await _send('POST', '/register', body: {
       'username': username,
@@ -297,6 +346,7 @@ class Api {
       'user_type': userType,
       'skill_tag': skillTag,
       'phone': phone,
+      'sms_code': smsCode,
     });
     token = d['token'] as String?;
     return UserAccount.fromJson(d['user']);
@@ -381,6 +431,43 @@ class Api {
 
   Future<void> joinProject(int projectId, {String role = '成员'}) async {
     await _send('POST', '/projects/join', body: {'project_id': projectId, 'role': role});
+  }
+
+  // ---- 用户目录（找得到聊过的人） ----
+  Future<List<UserAccount>> allUsers() async {
+    final d = await _send('GET', '/users');
+    return (d as List).map(UserAccount.fromJson).toList();
+  }
+
+  // ---- 需求（任务）大厅 ----
+  Future<List<TaskItem>> tasks() async {
+    final d = await _send('GET', '/tasks');
+    return (d as List).map(TaskItem.fromJson).toList();
+  }
+
+  Future<void> createTask({
+    required String title,
+    required String desc,
+    required double budget,
+    String deadline = '',
+  }) async {
+    await _send('POST', '/tasks', body: {
+      'title': title,
+      'task_desc': desc,
+      'budget': budget,
+      'deadline': deadline,
+    });
+  }
+
+  Future<void> takeTask(int taskId) async {
+    await _send('POST', '/tasks/take', body: {'task_id': taskId});
+  }
+
+  // ---- 短信验证码 ----
+  /// 返回 null 表示真实短信已发送；返回字符串为开发模式验证码
+  Future<String?> sendSmsCode(String phone) async {
+    final d = await _send('POST', '/sms/send', body: {'phone': phone});
+    return d['dev_code'] as String?;
   }
 
   // ---- 订单 ----

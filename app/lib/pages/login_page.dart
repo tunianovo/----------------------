@@ -1,6 +1,7 @@
 // ============================================================
 // 登录 / 注册页
 // ============================================================
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../main.dart';
@@ -18,10 +19,48 @@ class _LoginPageState extends State<LoginPage> {
   final _password = TextEditingController();
   final _realName = TextEditingController();
   final _phone = TextEditingController();
+  final _smsCode = TextEditingController();
   bool isRegister = false;
   bool userTypeTech = false;
   bool busy = false;
+  bool sendingCode = false;
+  int codeCountdown = 0;
   String? error;
+  Timer? _timer;
+
+  Future<void> _sendCode() async {
+    final phone = _phone.text.trim();
+    if (!RegExp(r'^1\d{10}$').hasMatch(phone)) {
+      setState(() => error = '请输入正确的11位手机号');
+      return;
+    }
+    setState(() { sendingCode = true; error = null; });
+    try {
+      final devCode = await api.sendSmsCode(phone);
+      if (!mounted) return;
+      if (devCode != null && devCode.isNotEmpty) {
+        // 开发模式（短信服务未配置）：验证码直接提示出来，方便测试
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('【开发模式】验证码：$devCode（配置短信服务后此提示消失）'),
+            backgroundColor: const Color(0xFFF5A623), behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 6)));
+        _smsCode.text = devCode;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('验证码已发送，请查收短信'), backgroundColor: kPrimary, behavior: SnackBarBehavior.floating));
+      }
+      codeCountdown = 60;
+      _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) { t.cancel(); return; }
+        setState(() => codeCountdown--);
+        if (codeCountdown <= 0) t.cancel();
+      });
+    } on ApiException catch (e) {
+      setState(() => error = e.message);
+    } catch (_) {
+      setState(() => error = '验证码发送失败，请重试');
+    }
+    if (mounted) setState(() => sendingCode = false);
+  }
 
   Future<void> _submit() async {
     final name = _username.text.trim();
@@ -30,9 +69,20 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => error = '请输入账号和密码');
       return;
     }
-    if (isRegister && pwd.length < 6) {
-      setState(() => error = '密码至少 6 位');
-      return;
+    if (isRegister) {
+      final phone = _phone.text.trim();
+      if (!RegExp(r'^1\d{10}$').hasMatch(phone)) {
+        setState(() => error = '请输入正确的11位手机号');
+        return;
+      }
+      if (_smsCode.text.trim().isEmpty) {
+        setState(() => error = '请获取并填写短信验证码');
+        return;
+      }
+      if (pwd.length < 6) {
+        setState(() => error = '密码至少 6 位');
+        return;
+      }
     }
     setState(() { busy = true; error = null; });
     try {
@@ -43,6 +93,7 @@ class _LoginPageState extends State<LoginPage> {
               realName: _realName.text.trim(),
               userType: userTypeTech ? 1 : 0,
               phone: _phone.text.trim(),
+              smsCode: _smsCode.text.trim(),
             )
           : await api.login(username: name, password: pwd);
       if (!mounted) return;
@@ -52,6 +103,12 @@ class _LoginPageState extends State<LoginPage> {
     } catch (_) {
       setState(() { error = '出错了，请重试'; busy = false; });
     }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -107,14 +164,40 @@ class _LoginPageState extends State<LoginPage> {
                   if (isRegister) ...[
                     const SizedBox(height: 12),
                     TextField(
-                      controller: _realName,
-                      decoration: const InputDecoration(hintText: '昵称（选填）', prefixIcon: Icon(Icons.badge_outlined)),
+                      controller: _phone,
+                      keyboardType: TextInputType.phone,
+                      maxLength: 11,
+                      decoration: const InputDecoration(hintText: '手机号（用于注册和找回）', prefixIcon: Icon(Icons.phone_outlined), counterText: ''),
+                      textInputAction: TextInputAction.next,
                     ),
                     const SizedBox(height: 12),
+                    Row(children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _smsCode,
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                          decoration: const InputDecoration(hintText: '短信验证码', prefixIcon: Icon(Icons.verified_outlined), counterText: ''),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      OutlinedButton(
+                        onPressed: (sendingCode || codeCountdown > 0) ? null : _sendCode,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(110, 50),
+                          side: const BorderSide(color: kPrimary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text(
+                          sendingCode ? '发送中…' : (codeCountdown > 0 ? '${codeCountdown}s' : '获取验证码'),
+                          style: const TextStyle(fontSize: 13, color: kPrimary),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
                     TextField(
-                      controller: _phone,
-                      decoration: const InputDecoration(hintText: '手机号（选填）', prefixIcon: Icon(Icons.phone_outlined)),
-                      keyboardType: TextInputType.phone,
+                      controller: _realName,
+                      decoration: const InputDecoration(hintText: '昵称（选填）', prefixIcon: Icon(Icons.badge_outlined)),
                     ),
                     const SizedBox(height: 12),
                     SwitchListTile(

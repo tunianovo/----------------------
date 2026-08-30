@@ -4,6 +4,8 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../main.dart';
+import '../bg_task.dart';
+import '../cache.dart';
 import '../theme.dart';
 import 'chat_page.dart';
 
@@ -17,6 +19,11 @@ class ChatsPage extends StatefulWidget {
 class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin {
   List<Conversation>? items;
   String? error;
+  bool loadingCache = true;
+  // 用户目录视图
+  String chatsView = 'msgs'; // msgs 会话 / users 用户列表
+  List<UserAccount>? allUsers;
+  String userFilter = '';
 
   @override
   bool get wantKeepAlive => true;
@@ -25,14 +32,33 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
   void initState() {
     super.initState();
     _load();
+    _loadUsers();
+    requestNotificationPermission(); // Android 13+ 通知权限
     // 每5秒轮询新消息/在线状态
     Stream.periodic(const Duration(seconds: 5)).listen((_) { if (mounted) _load(silent: true); });
   }
 
   // 供外部（切tab时）立即刷新
-  void refresh() => _load(silent: true);
+  void refresh() {
+    _load(silent: true);
+    if (chatsView == 'users') _loadUsers();
+  }
+
+  Future<void> _loadUsers() async {
+    try {
+      final list = await api.allUsers();
+      if (!mounted) return;
+      setState(() => allUsers = list);
+    } catch (_) {}
+  }
 
   Future<void> _load({bool silent = false}) async {
+    if (items == null) {
+      final cached = await LocalCache.get('conversations');
+      if (cached != null && mounted) {
+        setState(() { items = (cached as List).map(Conversation.fromJson).toList(); loadingCache = false; });
+      }
+    }
     try {
       final list = await api.conversations();
       if (!mounted) return;
@@ -97,21 +123,86 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
     super.build(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('消息'),
+        title: SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'msgs', label: Text('消息')),
+            ButtonSegment(value: 'users', label: Text('用户')),
+          ],
+          selected: {chatsView},
+          onSelectionChanged: (s) => setState(() { chatsView = s.first; if (s.first == 'users') _loadUsers(); }),
+          style: SegmentedButton.styleFrom(
+            selectedBackgroundColor: kPrimary,
+            selectedForegroundColor: Colors.white,
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        centerTitle: true,
         actions: [
-          IconButton(onPressed: _newChat, icon: const Icon(Icons.add_comment_outlined), tooltip: '发起新聊天'),
+          IconButton(onPressed: _newChat, icon: const Icon(Icons.add_comment_outlined), tooltip: '按账号发起聊天'),
         ],
       ),
-      body: RefreshIndicator(
+      body: chatsView == 'msgs' ? RefreshIndicator(
         onRefresh: () => _load(),
         color: kPrimary,
-        child: items == null && error == null
+        child: (items == null && loadingCache) && error == null
             ? const Center(child: CircularProgressIndicator())
             : error != null
                 ? ListView(children: [Padding(padding: const EdgeInsets.all(48), child: Center(child: Text(error!, style: const TextStyle(color: Colors.black45))))])
                 : (items!.isEmpty ? _empty() : _list()),
-      ),
+      ) : _usersView(),
     );
+  }
+
+  // 用户目录：所有注册用户，按昵称/账号搜索，点谁都能直接聊
+  Widget _usersView() {
+    final list = (allUsers ?? []).where((u) => u.id != widget.me.id).where((u) {
+      if (userFilter.isEmpty) return true;
+      return u.displayName.contains(userFilter) || u.username.contains(userFilter) || u.skillTag.contains(userFilter);
+    }).toList();
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: TextField(
+          onChanged: (v) => setState(() => userFilter = v.trim()),
+          decoration: const InputDecoration(hintText: '搜索昵称 / 账号 / 技能', prefixIcon: Icon(Icons.search), isDense: true),
+        ),
+      ),
+      Expanded(
+        child: allUsers == null
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadUsers,
+                color: kPrimary,
+                child: list.isEmpty
+                    ? ListView(children: const [Padding(padding: EdgeInsets.symmetric(vertical: 100), child: Center(child: Text('没有找到用户', style: TextStyle(color: Colors.black38))))])
+                    : ListView.separated(
+                        itemCount: list.length,
+                        separatorBuilder: (_, __) => const Divider(indent: 72, height: 1),
+                        itemBuilder: (_, i) {
+                          final u = list[i];
+                          return ListTile(
+                            leading: Stack(children: [
+                              UserAvatar(url: u.avatar, name: u.displayName, radius: 22),
+                              if (u.online)
+                                Positioned(right: 0, bottom: 0, child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                  child: const OnlineDot(size: 8))),
+                            ]),
+                            title: Text(u.displayName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                            subtitle: Text(u.userType == 1 ? (u.skillTag.isNotEmpty ? u.skillTag : '技能提供者') : '账号: ${u.username}',
+                                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.black45)),
+                            trailing: Text(u.online ? '在线' : '', style: const TextStyle(fontSize: 11, color: kOnline)),
+                            onTap: () async {
+                              await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: u.id, peerName: u.displayName, meId: widget.me.id)));
+                              _load(silent: true);
+                            },
+                          );
+                        },
+                      ),
+              ),
+      ),
+    ]);
   }
 
   Widget _empty() => ListView(children: [

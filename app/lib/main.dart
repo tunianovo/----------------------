@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'bg_task.dart';
 import 'theme.dart';
 import 'pages/login_page.dart';
 import 'pages/home_shell.dart';
@@ -19,7 +20,7 @@ final Api api = Api();
 final ValueNotifier<UserAccount?> session = ValueNotifier(null);
 
 /// 当前 App 版本（与 pubspec.yaml 保持一致；用于更新检查）
-const String kAppVersion = '1.0.2';
+const String kAppVersion = '1.0.4';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
