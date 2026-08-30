@@ -99,11 +99,11 @@ img { max-width: 100%; display: block; }
 .nav-item.active { color: var(--text); font-weight: 500; }
 .nav-badge {
     position: absolute; top: 2px; right: 2px;
-    background: var(--accent3); color: #fff;
-    font-size: 10px; font-weight: 600;
-    min-width: 16px; height: 16px; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    padding: 0 4px; animation: badgePulse 2s infinite;
+    background: var(--accent3);
+    width: 9px; height: 9px; min-width: 9px;
+    border-radius: 50%;
+    padding: 0; font-size: 0;
+    animation: badgePulse 2s infinite;
 }
 @keyframes badgePulse {
     0%,100% { box-shadow: 0 0 0 0 rgba(255,55,95,0.4); }
@@ -591,7 +591,7 @@ img { max-width: 100%; display: block; }
 
 /* ========== 消息悬停删除 + 已读回执 ========== */
 .msg-row { display: flex; align-items: flex-end; gap: 6px; }
-.msg-row.self { justify-content: flex-end; flex-direction: row-reverse; }
+.msg-row.self { justify-content: flex-start; flex-direction: row-reverse; }
 .msg-del { display: none; border: none; background: #F0F0F3; color: #E5484D; font-size: 11px; padding: 4px 9px; border-radius: 10px; cursor: pointer; }
 .msg-row:hover .msg-del { display: inline-block; }
 .msg-read { font-size: 9px; color: #86868b; margin: 1px 6px 0; text-align: right; }
