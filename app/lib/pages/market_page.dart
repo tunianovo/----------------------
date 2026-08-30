@@ -319,8 +319,6 @@ class _MarketPageState extends State<MarketPage> {
               ),
             ),
           )
-        else if (false)
-          const SliverToBoxAdapter(child: SizedBox())
         if (error != null)
           SliverToBoxAdapter(
             child: Padding(

@@ -140,7 +140,7 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
         avatar: widget.me.avatar, online: true, lastSeen: widget.me.lastSeen,
         bio: bioCtrl.text.trim(), discoverable: widget.me.discoverable,
       ));
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('资料已保存'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('资料已保存'),
           backgroundColor: kPrimary, behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
     } catch (_) {

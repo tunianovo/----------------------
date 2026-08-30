@@ -72,7 +72,7 @@ class _ProjectsPageState extends State<ProjectsPage> with AutomaticKeepAliveClie
         needSkills: skillsCtrl.text.split(RegExp('[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('项目已发布！系统会向技能匹配的用户推荐'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('项目已发布！系统会向技能匹配的用户推荐'),
           backgroundColor: kPrimary, behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
       _load();

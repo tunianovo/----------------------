@@ -312,6 +312,10 @@ class OrderItem {
     required this.price,
     required this.status,
     required this.createdAt,
+    this.snapshotDesc,
+    this.snapshotCover,
+    this.snapshotType,
+    this.snapshotSub,
   });
 
   factory OrderItem.fromJson(dynamic j) => OrderItem(

@@ -62,7 +62,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     try {
       await api.cancelOrder(o.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('订单已取消'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('订单已取消'),
           backgroundColor: kPrimary, behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
       _load();
