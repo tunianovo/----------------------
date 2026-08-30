@@ -39,7 +39,7 @@ jobs:
           # 应用名称
           sed -i 's/android:label="jsgx_app"/android:label="己曜"/' android/app/src/main/AndroidManifest.xml
           # 发布版需要显式声明网络权限
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/><application|' android/app/src/main/AndroidManifest.xml
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><application|' android/app/src/main/AndroidManifest.xml
 
       - name: Apply launcher icons
         run: dart run flutter_launcher_icons
@@ -63,10 +63,10 @@ jobs:
       - name: Create/Update release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: app-v1.0.3
-          name: 己曜 App v1.0.3
+          tag_name: app-v1.0.4
+          name: 己曜 App v1.0.4
           body: |
-            己曜安卓客户端 v1.0.3：消息页用户列表（找得到聊过的人）、用户端发布需求、需求大厅接单、客服入口、手机号验证码注册
+            己曜安卓客户端 v1.0.4：消息页用户列表（找得到聊过的人）、用户端发布需求、需求大厅接单、客服入口、手机号验证码注册
             - 账号登录注册（与网站数据互通）
             - 服务市场浏览与下单
             - 私信聊天、在线状态显示
