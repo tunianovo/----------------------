@@ -125,6 +125,13 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
         behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
   }
 
+  String _preview(String msg) {
+    if (msg.startsWith('【图片】')) return '[图片]';
+    if (msg.startsWith('【位置】')) return '[位置]';
+    if (msg.startsWith('【文件】')) return '[文件] ' + msg.substring(4).split('|')[0];
+    return msg;
+  }
+
   String _time(int ts) {
     if (ts == 0) return '';
     final d = DateTime.fromMillisecondsSinceEpoch(ts);
@@ -375,14 +382,14 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
               ])),
             title: GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: c.peerId))),
                 child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
-            subtitle: Text(c.lastMsg, maxLines: 1, overflow: TextOverflow.ellipsis,
+            subtitle: Text(_preview(c.lastMsg), maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 13, color: Colors.black45)),
             trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(_time(c.lastTime), style: const TextStyle(fontSize: 11, color: Colors.black38)),
               if (c.unread > 0)
                 Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 5),
-                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                    alignment: Alignment.center,
+                    width: 18,
+                    height: 18,
                     decoration: BoxDecoration(color: const Color(0xFFFF3B30), borderRadius: BorderRadius.circular(9)),
                     child: Text('${c.unread}', style: const TextStyle(color: Colors.white, fontSize: 10))),
             ]),
