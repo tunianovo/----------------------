@@ -319,9 +319,9 @@ class Api {
     }
     // 成功的列表数据写入本地缓存，供下次秒开
     if (data is List) {
-      for (final entry in const {'/services': 'services', '/conversations': 'conversations', '/tasks': 'tasks', '/orders': 'orders', '/projects': 'projects'}) {
-        if (path.startsWith(entry)) {
-          LocalCache.put(entry.substring(1), data);
+      for (final entry in {'/services': 'services', '/conversations': 'conversations', '/tasks': 'tasks', '/orders': 'orders', '/projects': 'projects'}.entries) {
+        if (path.startsWith(entry.key)) {
+          LocalCache.put(entry.value, data);
           break;
         }
       }

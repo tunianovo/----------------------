@@ -12,7 +12,7 @@ class LocalCache {
   static Future<void> put(String key, dynamic data) async {
     try {
       final p = await SharedPreferences.getInstance();
-      await p.setString('$_prefix$key', jsonEncode({'t': DateUtils.dateOnly(DateTime.now()).millisecondsSinceEpoch, 'd': data}));
+      await p.setString('$_prefix$key', jsonEncode({'t': DateTime.now().millisecondsSinceEpoch, 'd': data}));
     } catch (_) {}
   }
 
