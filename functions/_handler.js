@@ -49,7 +49,9 @@ const publicUser = (u) => ({
   avatar: u.avatar,
   created_at: Number(u.created_at),
   last_seen: u.last_seen ? Number(u.last_seen) : null,
-  online: !!(u.last_seen && (Date.now() - Number(u.last_seen)) < ONLINE_WINDOW)
+  online: !!(u.last_seen && (Date.now() - Number(u.last_seen)) < ONLINE_WINDOW),
+  bio: u.bio || '',
+  discoverable: u.discoverable === 0 ? 0 : 1
 });
 
 // ---------- 首次运行：建表 + 种子用户（每个 isolate 只执行一次） ----------
@@ -140,10 +142,83 @@ async function ensureSeedUsers(env) {
     )
   `).run();
 
+  // v5：需求（任务）大厅 + 短信验证码
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      task_desc TEXT NOT NULL,
+      budget REAL NOT NULL DEFAULT 0,
+      deadline TEXT DEFAULT '',
+      publisher_id INTEGER NOT NULL,
+      taker_id INTEGER,
+      status INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )
+  `).run();
+  // v6：群聊（群信息/群消息/进群邀请/已读位点）
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      owner_id INTEGER NOT NULL,
+      members TEXT DEFAULT '[]',
+      created_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS group_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL,
+      sender_id INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      create_time INTEGER NOT NULL
+    )
+  `).run();
+  await env.chat_db.prepare(`CREATE INDEX IF NOT EXISTS idx_gm_group ON group_messages(group_id)`).run();
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS group_invites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL,
+      invitee_id INTEGER NOT NULL,
+      inviter_id INTEGER NOT NULL,
+      status INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS group_reads (
+      group_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      last_read INTEGER NOT NULL,
+      PRIMARY KEY (group_id, user_id)
+    )
+  `).run();
+  // 订单交易快照列
+  for (const col of ['service_desc TEXT', 'service_cover TEXT', 'service_type TEXT', 'sub_category TEXT']) {
+    await env.chat_db.prepare(`ALTER TABLE orders ADD COLUMN ${col}`).run().catch(() => {});
+  }
+  // 隐私：是否可被发现 + 个人简介
+  await env.chat_db.prepare("ALTER TABLE users ADD COLUMN discoverable INTEGER DEFAULT 1").run().catch(() => {});
+  await env.chat_db.prepare("ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''").run().catch(() => {});
+
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS sms_codes (
+      phone TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      last_sent INTEGER NOT NULL,
+      sent_today INTEGER NOT NULL DEFAULT 0,
+      day TEXT NOT NULL
+    )
+  `).run();
+
   const { results } = await env.chat_db.prepare("SELECT COUNT(*) AS c FROM users").all();
   if (Number(results[0].c) > 0) {
     await seedServicesIfEmpty(env);
     await seedProjectsIfEmpty(env);
+    await seedTasksIfEmpty(env);
+    await ensureKefuAccount(env);
     return;
   }
 
@@ -204,6 +279,76 @@ async function seedProjectsIfEmpty(env) {
   }
 }
 
+// 需求（任务）种子数据。表为空时才插入
+async function seedTasksIfEmpty(env) {
+  const t = await env.chat_db.prepare("SELECT COUNT(*) AS c FROM tasks").all();
+  if (Number(t.results[0].c) > 0) return;
+  const seeds = [
+    { publisher_id: 3, title: '需要剪辑一条1分钟社团招新视频', task_desc: '社团招新视频，素材已拍好约20分钟，需要剪成1分钟左右的招新宣传片，加字幕和BGM。', budget: 100, deadline: '3天内' },
+    { publisher_id: 3, title: '求一份挑战杯答辩PPT美化', task_desc: '挑战杯项目答辩PPT，内容已有初稿约15页，需要美化设计，统一风格，加动画，适合现场答辩。', budget: 200, deadline: '下周三前' },
+    { publisher_id: 3, title: '杭州下沙毕业照跟拍半天', task_desc: '4人宿舍毕业照，在下沙校区拍摄半天，需要精修15张，原片全送。', budget: 250, deadline: '本周六' },
+    { publisher_id: 3, title: 'Python数据处理小脚本', task_desc: '需要一个Python脚本，批量处理Excel数据，做格式转换和统计，输出汇总表格。', budget: 150, deadline: '一周内' },
+    { publisher_id: 3, title: '公众号文章排版+封面设计', task_desc: '校园公众号推文，内容已写好约2000字，需要排版美化+设计封面图，风格清新文艺。', budget: 90, deadline: '3天内' },
+    { publisher_id: 3, title: '手工编织毛线围巾定制', task_desc: '想要一条粗毛线围巾，藏青色，送男生，长度180cm左右，纯手工编织。', budget: 120, deadline: '两周内' },
+  ];
+  for (const s of seeds) {
+    await env.chat_db.prepare(`
+      INSERT INTO tasks (title, task_desc, budget, deadline, publisher_id, taker_id, status, created_at)
+      VALUES (?,?,?,?,?,NULL,0,?)
+    `).bind(s.title, s.task_desc, s.budget, s.deadline, s.publisher_id, Date.now()).run();
+  }
+}
+
+// 官方客服账号（客服会话入口）。不存在时创建
+async function ensureKefuAccount(env) {
+  const r = await env.chat_db.prepare("SELECT id FROM users WHERE username = 'kefu01'").all();
+  if (r.results.length) return;
+  const hash = await makePasswordHash('Kefu@2026');
+  await env.chat_db.prepare(`
+    INSERT INTO users (username, password_hash, real_name, user_type, skill_tag, phone, avatar, token, created_at)
+    VALUES ('kefu01', ?, '官方客服', 0, '平台客服', '', NULL, NULL, ?)
+  `).bind(hash, Date.now()).run();
+}
+
+// 腾讯云短信发送（TC3-HMAC-SHA256 签名，无外部依赖）
+async function sendTencentSms(env, phone, code) {
+  const enc = new TextEncoder();
+  const service = 'sms', host = 'sms.tencentcloudapi.com', action = 'SendSms', version = '2021-01-11';
+  const now = new Date();
+  const ts = Math.floor(now.getTime() / 1000);
+  const date = now.toISOString().slice(0, 10);
+  const hex = (b) => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+  const key = async (name, msg) => crypto.subtle.importKey('raw', enc.encode(name), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    .then(k => crypto.subtle.sign('HMAC', k, enc.encode(msg))).then(hex);
+  const kDate = await key(env.TENCENT_SMS_SECRET_KEY, date);
+  const kService = await key(kDate, service);
+  const kSigning = await key(kService, 'tc3_request');
+  const payload = JSON.stringify({
+    PhoneNumberSet: ['+86' + phone],
+    SmsSdkAppId: env.TENCENT_SMS_APP_ID,
+    SignName: env.TENCENT_SMS_SIGN,
+    TemplateId: env.TENCENT_SMS_TEMPLATE_ID,
+    TemplateParamSet: [code],
+  });
+  const hashedPayload = hex(await crypto.subtle.digest('SHA-256', enc.encode(payload)));
+  const canonical = 'POST\n/\n\ncontent-type:application/json; charset=utf-8\nhost:' + host + '\n\ncontent-type;host\n' + hashedPayload;
+  const stringToSign = 'TC3-HMAC-SHA256\n' + ts + '\n' + date + '/' + service + '/tc3_request\n' + hex(await crypto.subtle.digest('SHA-256', enc.encode(canonical)));
+  const signature = await key(kSigning, stringToSign);
+  const resp = await fetch('https://' + host, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'X-TC-Action': action, 'X-TC-Version': version, 'X-TC-Timestamp': String(ts), 'X-TC-Date': date,
+      'Authorization': 'TC3-HMAC-SHA256 Credential=' + env.TENCENT_SMS_SECRET_ID + '/' + date + '/' + service + '/tc3_request, SignedHeaders=content-type;host, Signature=' + signature,
+    },
+    body: payload,
+  });
+  const r = await resp.json();
+  if (!r.Response || r.Response.SendStatusSet?.[0]?.Code !== 'Ok') {
+    throw new Error('tencent sms error: ' + JSON.stringify(r.Response || r).slice(0, 200));
+  }
+}
+
 // 从 Authorization 头解析登录用户：先查多设备会话表，再兼容旧的单 token 字段
 async function getAuthUser(env, request) {
   const auth = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
@@ -228,10 +373,41 @@ export async function handler(request, env, ctx) {
       return json({
         ok: true,
         service: 'chat-api',
-        version: 'v4',
-        endpoints: ['/register', '/login', '/users', '/me', '/send', '/history', '/read', '/conversations'],
+        version: 'v5',
+        endpoints: ['/register', '/login', '/sms/send', '/users', '/me', '/send', '/history', '/read', '/conversations', '/services', '/orders', '/tasks', '/projects'],
         time: Date.now()
       });
+    }
+
+    // 发送短信验证码 POST /sms/send {phone}
+    // 未配置腾讯云短信密钥时为开发模式：验证码直接返回给客户端（上线前务必配置密钥！）
+    if (url.pathname === '/sms/send' && request.method === 'POST') {
+      const b = await readBody();
+      const phone = String(b.phone || '').trim();
+      if (!/^1\d{10}$/.test(phone)) return json({ error: '手机号格式不正确' }, 400);
+      const now = Date.now();
+      const day = new Date(now).toISOString().slice(0, 10);
+      const row = (await env.chat_db.prepare("SELECT * FROM sms_codes WHERE phone = ?").bind(phone).all()).results[0];
+      if (row && now - Number(row.last_sent) < 60 * 1000) return json({ error: '发送太频繁，请稍后再试' }, 429);
+      if (row && row.day === day && Number(row.sent_today) >= 5) return json({ error: '今日发送次数已达上限' }, 429);
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      await env.chat_db.prepare(`
+        INSERT INTO sms_codes (phone, code, expires_at, last_sent, sent_today, day)
+        VALUES (?,?,?,?,?,?)
+        ON CONFLICT(phone) DO UPDATE SET code = excluded.code, expires_at = excluded.expires_at, last_sent = excluded.last_sent, sent_today = excluded.sent_today, day = excluded.day
+      `).bind(phone, code, now + 5 * 60 * 1000, now, row && row.day === day ? Number(row.sent_today) + 1 : 1, day).run();
+
+      const smsConfigured = env.TENCENT_SMS_SECRET_ID && env.TENCENT_SMS_SECRET_KEY && env.TENCENT_SMS_APP_ID && env.TENCENT_SMS_TEMPLATE_ID;
+      if (smsConfigured) {
+        try {
+          await sendTencentSms(env, phone, code);
+          return json({ ok: true });
+        } catch (e) {
+          return json({ error: '短信发送失败，请稍后再试' }, 502);
+        }
+      }
+      // 开发模式：直接返回验证码（上线前配置腾讯云短信密钥即可关闭）
+      return json({ ok: true, dev_code: code });
     }
 
     // ---------- 公开接口 ----------
@@ -245,6 +421,24 @@ export async function handler(request, env, ctx) {
       if (username.length > 32 || password.length < 6) return json({ error: '密码至少6位，账号不超过32字符' }, 400);
       const dup = await env.chat_db.prepare("SELECT id FROM users WHERE username = ?").bind(username).all();
       if (dup.results.length) return json({ error: '账号已存在' }, 400);
+
+      // 手机号注册：短信服务配置后强制校验验证码；未配置（开发模式）仅做格式校验
+      const phone = String(b.phone || '').trim();
+      const smsConfigured = env.TENCENT_SMS_SECRET_ID && env.TENCENT_SMS_SECRET_KEY && env.TENCENT_SMS_APP_ID && env.TENCENT_SMS_TEMPLATE_ID;
+      if (phone && !/^1\d{10}$/.test(phone)) return json({ error: '手机号格式不正确' }, 400);
+      if (phone) {
+        const phoneDup = await env.chat_db.prepare("SELECT id FROM users WHERE phone = ?").bind(phone).all();
+        if (phoneDup.results.length) return json({ error: '该手机号已注册过账号' }, 400);
+      }
+      if (smsConfigured) {
+        if (!/^1\d{10}$/.test(phone)) return json({ error: '请填写手机号并获取验证码' }, 400);
+        const code = String(b.sms_code || '').trim();
+        const row = (await env.chat_db.prepare("SELECT * FROM sms_codes WHERE phone = ?").bind(phone).all()).results[0];
+        if (!row || String(row.code) !== code) return json({ error: '验证码错误' }, 400);
+        if (Date.now() > Number(row.expires_at)) return json({ error: '验证码已过期，请重新获取' }, 400);
+        await env.chat_db.prepare("DELETE FROM sms_codes WHERE phone = ?").bind(phone).run();
+      }
+
       const user = {
         username,
         password_hash: await makePasswordHash(password),
@@ -278,15 +472,20 @@ export async function handler(request, env, ctx) {
       return json({ ok: true, user: publicUser({ ...u, token }), token });
     }
 
-    // 查用户公开资料：GET /users?ids=1,2,3 批量，或 GET /users?username=xxx 按账号精确查找（发起新聊天用）
+    // 查用户公开资料：GET /users 无参数=全量用户列表；?ids=1,2,3 批量；?username=xxx 精确查找
     if (url.pathname === '/users' && request.method === 'GET') {
-      const COLS = 'id, username, real_name, user_type, skill_tag, phone, avatar, created_at, last_seen';
+      const COLS = 'id, username, real_name, user_type, skill_tag, avatar, created_at, last_seen';
       const uname = (q.get('username') || '').trim();
       if (uname) {
         const { results } = await env.chat_db.prepare(`SELECT ${COLS} FROM users WHERE username = ?`).bind(uname).all();
         return json(results.map(publicUser));
       }
       const ids = q.get('ids') || '';
+      if (!ids) {
+        // 用户目录（不含手机号；隐藏设置为不可发现的用户，客服除外）
+        const { results } = await env.chat_db.prepare(`SELECT ${COLS} FROM users WHERE (discoverable IS NULL OR discoverable = 1 OR username = 'kefu01') ORDER BY last_seen DESC NULLS LAST, id ASC LIMIT 500`).all();
+        return json(results.map(publicUser));
+      }
       const list = ids.split(',').map(Number).filter(Boolean);
       if (!list.length) return json([]);
       const { results } = await env.chat_db.prepare(
@@ -296,9 +495,11 @@ export async function handler(request, env, ctx) {
     }
 
     // ---------- 以下接口需要登录（token） ----------
-    const PROTECTED = ['/me', '/send', '/history', '/read', '/conversations', '/heartbeat', '/orders'];
-    const me = PROTECTED.includes(url.pathname) ? await getAuthUser(env, request) : null;
-    if (PROTECTED.includes(url.pathname) && !me) return json({ error: '未登录或登录已过期' }, 401);
+    const PROTECTED_EXACT = ['/me', '/send', '/history', '/read', '/conversations', '/heartbeat', '/orders', '/orders/cancel', '/settings', '/groups', '/groups/mine', '/groups/invites/handle', '/projects/recommend'];
+    const PROTECTED_PREFIX = ['/kefu/', '/group/'];
+    const needsAuth = PROTECTED_EXACT.includes(url.pathname) || PROTECTED_PREFIX.some(pp => url.pathname.startsWith(pp));
+    const me = needsAuth ? await getAuthUser(env, request) : null;
+    if (needsAuth && !me) return json({ error: '未登录或登录已过期' }, 401);
 
     // 心跳 POST /heartbeat：App/网站定期调用，用于在线状态
     if (url.pathname === '/heartbeat' && request.method === 'POST') {
@@ -425,9 +626,9 @@ export async function handler(request, env, ctx) {
       if (!svc) return json({ error: '服务不存在或已下架' }, 404);
       if (Number(svc.user_id) === Number(me.id)) return json({ error: '不能下单自己的服务' }, 400);
       const res = await env.chat_db.prepare(`
-        INSERT INTO orders (service_id, buyer_id, seller_id, order_price, order_status, created_at)
-        VALUES (?,?,?,?,0,?)
-      `).bind(serviceId, Number(me.id), Number(svc.user_id), Number(svc.price), Date.now()).run();
+        INSERT INTO orders (service_id, buyer_id, seller_id, order_price, order_status, created_at, service_desc, service_cover, service_type, sub_category)
+        VALUES (?,?,?,?,0,?,?,?,?,?)
+      `).bind(serviceId, Number(me.id), Number(svc.user_id), Number(svc.price), Date.now(), svc.service_desc, svc.cover, svc.service_type, svc.sub_category).run();
       await env.chat_db.prepare(`
         INSERT INTO private_messages (sender_id, receiver_id, content, create_time, is_read) VALUES (?,?,?,?,0)
       `).bind(Number(me.id), Number(svc.user_id), `【订单】我下单了你的服务「${svc.title}」（¥${svc.price}），请和我沟通需求详情～`, Date.now()).run();
@@ -458,6 +659,10 @@ export async function handler(request, env, ctx) {
         am_buyer: Number(r.buyer_id) === Number(me.id),
         order_price: Number(r.order_price),
         order_status: Number(r.order_status),
+        snapshot_desc: r.service_desc || null,
+        snapshot_cover: r.service_cover || null,
+        snapshot_type: r.service_type || null,
+        snapshot_sub: r.sub_category || null,
         created_at: Number(r.created_at)
       })));
     }
@@ -526,6 +731,248 @@ export async function handler(request, env, ctx) {
         INSERT INTO private_messages (sender_id, receiver_id, content, create_time, is_read) VALUES (?,?,?,?,0)
       `).bind(Number(me.id), Number(proj.creator_id), `【共创】${me.real_name} 申请加入你的项目「${proj.project_name}」，快聊聊吧～`, Date.now()).run();
       return json({ ok: true, member_count: members.length });
+    }
+
+    // 需求大厅 GET /tasks （公开）；发布 POST /tasks （登录）
+    if (url.pathname === '/tasks' && request.method === 'GET') {
+      const { results } = await env.chat_db.prepare(`
+        SELECT t.*, u.real_name AS publisher_name, u.last_seen AS publisher_last_seen
+        FROM tasks t LEFT JOIN users u ON u.id = t.publisher_id
+        ORDER BY t.status ASC, t.created_at DESC
+      `).all();
+      return json(results.map(r => ({
+        id: Number(r.id),
+        title: r.title,
+        task_desc: r.task_desc,
+        budget: Number(r.budget),
+        deadline: r.deadline,
+        publisher_id: Number(r.publisher_id),
+        publisher_name: r.publisher_name || '用户',
+        publisher_online: !!(r.publisher_last_seen && (Date.now() - Number(r.publisher_last_seen)) < ONLINE_WINDOW),
+        taker_id: r.taker_id ? Number(r.taker_id) : null,
+        status: Number(r.status),
+        created_at: Number(r.created_at)
+      })));
+    }
+    if (url.pathname === '/tasks' && request.method === 'POST') {
+      const me2 = await getAuthUser(env, request);
+      if (!me2) return json({ error: '未登录或登录已过期' }, 401);
+      const b = await readBody();
+      const title = String(b.title || '').trim();
+      const desc = String(b.task_desc || b.desc || '').trim();
+      const budget = Number(b.budget);
+      if (!title || !desc || !budget) return json({ error: '标题、描述、预算不能为空' }, 400);
+      const res = await env.chat_db.prepare(`
+        INSERT INTO tasks (title, task_desc, budget, deadline, publisher_id, taker_id, status, created_at)
+        VALUES (?,?,?,?,?,NULL,0,?)
+      `).bind(title, desc, budget, String(b.deadline || '').trim(), Number(me2.id), Date.now()).run();
+      return json({ ok: true, task_id: res.meta.last_row_id });
+    }
+
+    // 接单 POST /tasks/take {task_id}：接单并给发布者发消息建立会话
+    if (url.pathname === '/tasks/take' && request.method === 'POST') {
+      const me2 = await getAuthUser(env, request);
+      if (!me2) return json({ error: '未登录或登录已过期' }, 401);
+      const b = await readBody();
+      const taskId = Number(b.task_id);
+      if (!taskId) return json({ error: '缺少 task_id' }, 400);
+      const { results } = await env.chat_db.prepare("SELECT * FROM tasks WHERE id = ?").bind(taskId).all();
+      const task = results[0];
+      if (!task) return json({ error: '需求不存在' }, 404);
+      if (Number(task.publisher_id) === Number(me2.id)) return json({ error: '这是你发布的需求' }, 400);
+      if (Number(task.status) !== 0) return json({ error: '该需求已被接单' }, 400);
+      await env.chat_db.prepare("UPDATE tasks SET taker_id = ?, status = 1 WHERE id = ?").bind(Number(me2.id), taskId).run();
+      await env.chat_db.prepare(`
+        INSERT INTO private_messages (sender_id, receiver_id, content, create_time, is_read) VALUES (?,?,?,?,0)
+      `).bind(Number(me2.id), Number(task.publisher_id), `【接单】我接下了你的需求「${task.title}」（¥${task.budget}），沟通一下细节吧～`, Date.now()).run();
+      return json({ ok: true });
+    }
+
+    // 取消订单 POST /orders/cancel {order_id}：买家在未被接单前可取消
+    if (url.pathname === '/orders/cancel' && request.method === 'POST') {
+      const me2 = await getAuthUser(env, request);
+      if (!me2) return json({ error: '未登录或登录已过期' }, 401);
+      const b = await readBody();
+      const orderId = Number(b.order_id);
+      const { results } = await env.chat_db.prepare("SELECT * FROM orders WHERE id = ?").bind(orderId).all();
+      const o = results[0];
+      if (!o) return json({ error: '订单不存在' }, 404);
+      if (Number(o.buyer_id) !== Number(me.id)) return json({ error: '只有买家可以取消' }, 403);
+      if (Number(o.order_status) !== 0) return json({ error: '订单已被接单，无法取消，请联系对方' }, 400);
+      await env.chat_db.prepare("UPDATE orders SET order_status = 3 WHERE id = ?").bind(orderId).run();
+      await env.chat_db.prepare(`INSERT INTO private_messages (sender_id, receiver_id, content, create_time, is_read) VALUES (?,?,?,?,0)`)
+        .bind(Number(me.id), Number(o.seller_id), '【订单】买家取消了订单，本次交易未达成。', Date.now()).run();
+      return json({ ok: true });
+    }
+
+    // 个人设置 PUT /settings {discoverable?, skill_tag?, bio?, real_name?}
+    if (url.pathname === '/settings' && request.method === 'PUT') {
+      const me2 = await getAuthUser(env, request);
+      if (!me2) return json({ error: '未登录或登录已过期' }, 401);
+      const b = await readBody();
+      if (b.discoverable !== undefined) {
+        await env.chat_db.prepare("UPDATE users SET discoverable = ? WHERE id = ?").bind(b.discoverable ? 1 : 0, Number(me.id)).run();
+      }
+      if (b.skill_tag !== undefined) {
+        await env.chat_db.prepare("UPDATE users SET skill_tag = ? WHERE id = ?").bind(String(b.skill_tag || '').slice(0, 200), Number(me.id)).run();
+      }
+      if (b.bio !== undefined) {
+        await env.chat_db.prepare("UPDATE users SET bio = ? WHERE id = ?").bind(String(b.bio || '').slice(0, 500), Number(me.id)).run();
+      }
+      if (b.real_name !== undefined && String(b.real_name).trim()) {
+        await env.chat_db.prepare("UPDATE users SET real_name = ? WHERE id = ?").bind(String(b.real_name).trim().slice(0, 30), Number(me.id)).run();
+      }
+      return json({ ok: true });
+    }
+
+    // 客服查看双方聊天记录 GET /kefu/chat?user_a=&user_b=（仅官方客服账号可调用）
+    if (url.pathname === '/kefu/chat' && request.method === 'GET') {
+      const me2 = await getAuthUser(env, request);
+      if (!me2 || me2.username !== 'kefu01') return json({ error: '仅官方客服可访问' }, 403);
+      const ua = Number(q.get('user_a')), ub = Number(q.get('user_b'));
+      if (!ua || !ub) return json({ error: '缺少 user_a / user_b' }, 400);
+      const { results } = await env.chat_db.prepare(`
+        SELECT m.*, u1.real_name AS sender_name
+        FROM private_messages m LEFT JOIN users u1 ON u1.id = m.sender_id
+        WHERE (m.sender_id = ? AND m.receiver_id = ?) OR (m.sender_id = ? AND m.receiver_id = ?)
+        ORDER BY m.create_time ASC LIMIT 500
+      `).bind(ua, ub, ub, ua).all();
+      return json(results.map(r => ({
+        id: Number(r.id), sender_id: Number(r.sender_id), sender_name: r.sender_name || '用户',
+        receiver_id: Number(r.receiver_id), content: r.content, create_time: Number(r.create_time), is_read: Number(r.is_read)
+      })));
+    }
+
+    // 创建群聊 POST /groups {name, member_ids:[]}（被邀请人同意后进群）
+    if (url.pathname === '/groups' && request.method === 'POST') {
+      const b = await readBody();
+      const name = String(b.name || '').trim();
+      if (!name) return json({ error: '请填写群名称' }, 400);
+      const ids = (Array.isArray(b.member_ids) ? b.member_ids : []).map(Number).filter(v => v && v !== Number(me.id)).slice(0, 49);
+      const members = [{ user_id: Number(me.id), role: '群主' }];
+      const res = await env.chat_db.prepare("INSERT INTO groups (name, owner_id, members, created_at) VALUES (?,?,?,?)")
+        .bind(name, Number(me.id), JSON.stringify(members), Date.now()).run();
+      const gid = res.meta.last_row_id;
+      for (const uid of ids) {
+        await env.chat_db.prepare("INSERT INTO group_invites (group_id, invitee_id, inviter_id, status, created_at) VALUES (?,?,?,0,?)")
+          .bind(gid, uid, Number(me.id), Date.now()).run();
+        await env.chat_db.prepare(`INSERT INTO private_messages (sender_id, receiver_id, content, create_time, is_read) VALUES (?,?,?,?,0)`)
+          .bind(Number(me.id), uid, '【群聊邀请】' + me.real_name + ' 邀请你加入群聊「' + name + '」，到消息页处理邀请。', Date.now()).run();
+      }
+      return json({ ok: true, group_id: gid, invited: ids.length });
+    }
+
+    // 我的群聊与收到的邀请 GET /groups/mine
+    if (url.pathname === '/groups/mine' && request.method === 'GET') {
+      const joined = (await env.chat_db.prepare("SELECT * FROM groups WHERE members LIKE ?").bind('%' + String(Number(me.id)) + '%').all()).results;
+      const invites = (await env.chat_db.prepare(`
+        SELECT gi.id AS invite_id, gi.created_at, g.id AS group_id, g.name, u.real_name AS inviter_name
+        FROM group_invites gi JOIN groups g ON g.id = gi.group_id LEFT JOIN users u ON u.id = gi.inviter_id
+        WHERE gi.invitee_id = ? AND gi.status = 0 ORDER BY gi.created_at DESC
+      `).bind(Number(me.id)).all()).results;
+      return json({
+        joined: joined.map(g => {
+          let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
+          return { group_id: Number(g.id), name: g.name, member_count: members.length, members: members };
+        }),
+        invites: invites.map(r => ({ invite_id: Number(r.invite_id), group_id: Number(r.group_id), name: r.name, inviter_name: r.inviter_name || '用户', created_at: Number(r.created_at) }))
+      });
+    }
+
+    // 处理邀请 POST /groups/invites/handle {invite_id, accept}
+    if (url.pathname === '/groups/invites/handle' && request.method === 'POST') {
+      const b = await readBody();
+      const inviteId = Number(b.invite_id);
+      const { results } = await env.chat_db.prepare("SELECT * FROM group_invites WHERE id = ? AND invitee_id = ?").bind(inviteId, Number(me.id)).all();
+      const inv = results[0];
+      if (!inv) return json({ error: '邀请不存在' }, 404);
+      if (Number(inv.status) !== 0) return json({ error: '该邀请已处理' }, 400);
+      await env.chat_db.prepare("UPDATE group_invites SET status = ? WHERE id = ?").bind(b.accept ? 1 : 2, inviteId).run();
+      if (b.accept) {
+        const g = (await env.chat_db.prepare("SELECT * FROM groups WHERE id = ?").bind(inv.group_id).all()).results[0];
+        let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
+        members.push({ user_id: Number(me.id), role: '成员' });
+        await env.chat_db.prepare("UPDATE groups SET members = ? WHERE id = ?").bind(JSON.stringify(members), inv.group_id).run();
+        await env.chat_db.prepare(`INSERT INTO group_messages (group_id, sender_id, content, create_time) VALUES (?,?,?,?)`)
+          .bind(inv.group_id, Number(me.id), '我加入了群聊', Date.now()).run();
+        return json({ ok: true, joined: true, group_id: inv.group_id, name: g.name });
+      }
+      return json({ ok: true, joined: false });
+    }
+
+    // 群历史 GET /group/history?group_id=（成员可见；同时更新已读位点）
+    if (url.pathname === '/group/history' && request.method === 'GET') {
+      const gid = Number(q.get('group_id'));
+      const g = (await env.chat_db.prepare("SELECT * FROM groups WHERE id = ?").bind(gid).all()).results[0];
+      if (!g) return json({ error: '群不存在' }, 404);
+      let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
+      if (!members.some(m => Number(m.user_id) === Number(me.id))) return json({ error: '你还不是群成员' }, 403);
+      const { results } = await env.chat_db.prepare(`
+        SELECT gm.*, u.real_name AS sender_name FROM group_messages gm LEFT JOIN users u ON u.id = gm.sender_id
+        WHERE gm.group_id = ? ORDER BY gm.create_time ASC LIMIT 500
+      `).bind(gid).all();
+      await env.chat_db.prepare(`
+        INSERT INTO group_reads (group_id, user_id, last_read) VALUES (?,?,?)
+        ON CONFLICT(group_id, user_id) DO UPDATE SET last_read = excluded.last_read
+      `).bind(gid, Number(me.id), Date.now()).run();
+      return json(results.map(r => ({
+        id: Number(r.id), group_id: Number(r.group_id), sender_id: Number(r.sender_id),
+        sender_name: r.sender_name || '用户', content: r.content, create_time: Number(r.create_time)
+      })));
+    }
+
+    // 群发送 POST /group/send {group_id, content}
+    if (url.pathname === '/group/send' && request.method === 'POST') {
+      const b = await readBody();
+      const gid = Number(b.group_id);
+      const content = String(b.content || '').trim();
+      if (!gid || !content) return json({ error: '缺少群或内容' }, 400);
+      const g = (await env.chat_db.prepare("SELECT * FROM groups WHERE id = ?").bind(gid).all()).results[0];
+      let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
+      if (!members.some(m => Number(m.user_id) === Number(me.id))) return json({ error: '你还不是群成员' }, 403);
+      if (content.length > 2000) return json({ error: '内容过长' }, 400);
+      await env.chat_db.prepare("INSERT INTO group_messages (group_id, sender_id, content, create_time) VALUES (?,?,?,?)")
+        .bind(gid, Number(me.id), content, Date.now()).run();
+      return json({ ok: true });
+    }
+
+    // 发布共创项目 POST /projects {project_name, project_desc, total_budget, need_skills:[]}
+    if (url.pathname === '/projects' && request.method === 'POST') {
+      const me2 = await getAuthUser(env, request);
+      if (!me2) return json({ error: '未登录或登录已过期' }, 401);
+      const b = await readBody();
+      const name = String(b.project_name || '').trim();
+      const desc = String(b.project_desc || '').trim();
+      if (!name || !desc) return json({ error: '项目名称和介绍不能为空' }, 400);
+      const skills = Array.isArray(b.need_skills) ? b.need_skills.map(s => String(s).trim()).filter(Boolean).slice(0, 10) : [];
+      const res = await env.chat_db.prepare(`
+        INSERT INTO projects (project_name, project_desc, creator_id, total_budget, status, members, need_skills, created_at)
+        VALUES (?,?,?,?,'recruiting',?,?,?)
+      `).bind(name, desc, Number(me2.id), Number(b.total_budget) || 0, JSON.stringify([{ user_id: Number(me2.id), role: '发起人' }]), JSON.stringify(skills), Date.now()).run();
+      return json({ ok: true, project_id: res.meta.last_row_id });
+    }
+
+    // 共创推荐人选 GET /projects/recommend?project_id=（仅发起人）：需求技能与用户标签匹配
+    if (url.pathname === '/projects/recommend' && request.method === 'GET') {
+      const pid = Number(q.get('project_id'));
+      const proj = (await env.chat_db.prepare("SELECT * FROM projects WHERE id = ?").bind(pid).all()).results[0];
+      if (!proj) return json({ error: '项目不存在' }, 404);
+      if (Number(proj.creator_id) !== Number(me.id)) return json({ error: '仅发起人可查看推荐' }, 403);
+      let skills = []; try { skills = JSON.parse(proj.need_skills || '[]'); } catch (e) {}
+      let members = []; try { members = JSON.parse(proj.members || '[]'); } catch (e) {}
+      const memberIds = members.map(m => Number(m.user_id));
+      const { results } = await env.chat_db.prepare(
+        "SELECT id, username, real_name, user_type, skill_tag, avatar, bio, last_seen FROM users WHERE (discoverable IS NULL OR discoverable = 1) AND id != ?"
+      ).bind(Number(me.id)).all();
+      const rec = [];
+      for (const u of results) {
+        if (memberIds.includes(Number(u.id))) continue;
+        const tags = String(u.skill_tag || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
+        const matched = skills.filter(s => tags.some(t => t.includes(s) || s.includes(t)));
+        if (matched.length) rec.push({ id: Number(u.id), real_name: u.real_name, username: u.username, avatar: u.avatar, bio: u.bio || '', skill_tag: u.skill_tag, matched: matched, online: !!(u.last_seen && (Date.now() - Number(u.last_seen)) < ONLINE_WINDOW) });
+      }
+      rec.sort((a, b) => b.matched.length - a.matched.length);
+      return json(rec.slice(0, 10));
     }
 
     return json({ msg: 'route not found' }, 404);
