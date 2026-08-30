@@ -24,7 +24,7 @@ final Api api = Api();
 final ValueNotifier<UserAccount?> session = ValueNotifier(null);
 
 /// 当前 App 版本（与 pubspec.yaml 保持一致；用于更新检查）
-const String kAppVersion = '1.1.2';
+const String kAppVersion = '1.1.3';
 
 /// 崩溃日志写入（同步写，闪退前尽量落盘）
 void writeCrashLog(String what, Object error, StackTrace? st) {
@@ -59,7 +59,12 @@ Future<void> main() async {
 
     runApp(const JsgxApp());
 
-    // v1.1.2 诊断：后台消息提醒暂时禁用（workmanager 嫌疑）
+    // 后台消息提醒：延后到界面起来之后，且逐段保护，绝不影响启动
+    if (session.value != null) {
+      Timer(const Duration(seconds: 5), () {
+        initBackgroundPolling().catchError((_) {});
+      });
+    }
   }, (error, stack) {
     writeCrashLog('ZoneError', error, stack);
   });
@@ -194,7 +199,10 @@ class _AppGateState extends State<AppGate> {
     await SessionStore.save(u, api.token!);
     session.value = u;
     _startHeartbeat();
-    // v1.1.2 诊断：后台消息提醒暂时禁用
+    // 登录后延迟注册后台消息轮询（独立保护）
+    Timer(const Duration(seconds: 5), () {
+      initBackgroundPolling().catchError((_) {});
+    });
   }
 
   @override

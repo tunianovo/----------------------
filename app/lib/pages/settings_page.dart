@@ -129,6 +129,26 @@ class _SettingsPageState extends State<SettingsPage> {
         )),
         const SizedBox(height: 8),
         const SizedBox(height: 16),
+        const Text('通知', style: TextStyle(fontSize: 12, color: Colors.black38, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Card(child: SwitchListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          title: const Text('离线消息提醒', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          subtitle: const Text('App在后台时，收到新私信每15分钟提醒一次', style: TextStyle(fontSize: 11)),
+          value: bgNotify,
+          activeColor: kPrimary,
+          onChanged: (v) async {
+            setState(() => bgNotify = v);
+            final p = await SharedPreferences.getInstance();
+            await p.setBool('bg_notify', v);
+            if (v) {
+              initBackgroundPolling().catchError((_) {});
+            } else {
+              disableBackgroundPolling();
+            }
+          },
+        )),
+        const SizedBox(height: 16),
         const Text('通用', style: TextStyle(fontSize: 12, color: Colors.black38, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Card(clipBehavior: Clip.antiAlias, child: Column(children: [
