@@ -61,8 +61,8 @@ class _ProjectsPageState extends State<ProjectsPage> with AutomaticKeepAliveClie
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('发布项目')),
           const SizedBox(height: 6),
         ]),
-      ))),
-    );
+        )),
+      );
     if (ok != true || nameCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty) return;
     try {
       await api.createProject(

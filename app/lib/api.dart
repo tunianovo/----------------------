@@ -27,6 +27,8 @@ class UserAccount {
   final String? avatar;
   final bool online;
   final int? lastSeen;
+  final String bio;
+  final int discoverable;
   UserAccount({
     required this.id,
     required this.username,

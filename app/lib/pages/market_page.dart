@@ -295,16 +295,30 @@ class _MarketPageState extends State<MarketPage> {
           ),
         ),
         if (_matchedProjects.isNotEmpty)
-          SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('相关共创项目', style: TextStyle(fontSize: 12, color: Colors.black38)),
-            const SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 6, children: _matchedProjects.take(4).map((pj) => ActionChip(
-                  avatar: const Icon(Icons.groups, size: 15, color: kPrimary),
-                  label: Text(pj.name, style: const TextStyle(fontSize: 11)),
-                  backgroundColor: const Color(0xFFF0F4FF),
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProjectsPage(me: widget.me))),
-                )).toList()),
-          ])))
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('相关共创项目', style: TextStyle(fontSize: 12, color: Colors.black38)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: _matchedProjects.take(4).map((pj) {
+                      return ActionChip(
+                        avatar: const Icon(Icons.groups, size: 15, color: kPrimary),
+                        label: Text(pj.name, style: const TextStyle(fontSize: 11)),
+                        backgroundColor: const Color(0xFFF0F4FF),
+                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProjectsPage(me: widget.me))),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          )
         else if (false)
           const SliverToBoxAdapter(child: SizedBox())
         if (error != null)

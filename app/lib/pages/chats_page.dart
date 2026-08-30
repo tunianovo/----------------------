@@ -24,6 +24,8 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
   String chatsView = 'msgs'; // msgs 会话 / users 用户列表
   List<UserAccount>? allUsers;
   String userFilter = '';
+  List<GroupInfo> groups = [];
+  List<GroupInvite> invites = [];
 
   @override
   bool get wantKeepAlive => true;
@@ -33,6 +35,7 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
     super.initState();
     _load();
     _loadUsers();
+    _loadGroups();
     requestNotificationPermission(); // Android 13+ 通知权限
     // 每5秒轮询新消息/在线状态
     Stream.periodic(const Duration(seconds: 5)).listen((_) { if (mounted) _load(silent: true); });
@@ -42,6 +45,15 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
   void refresh() {
     _load(silent: true);
     if (chatsView == 'users') _loadUsers();
+    _loadGroups();
+  }
+
+  Future<void> _loadGroups() async {
+    try {
+      final g = await api.myGroups();
+      if (!mounted) return;
+      setState(() { groups = g; invites = api.pendingInvites; });
+    } catch (_) {}
   }
 
   Future<void> _loadUsers() async {

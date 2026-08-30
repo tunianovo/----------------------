@@ -13,7 +13,8 @@ class HomeShell extends StatefulWidget {
   final UserAccount me;
   final VoidCallback onLogout;
   final VoidCallback onCheckUpdate;
-  const HomeShell({super.key, required this.me, required this.onLogout, required this.onCheckUpdate});
+  final void Function(UserAccount) onMeUpdated;
+  const HomeShell({super.key, required this.me, required this.onLogout, required this.onCheckUpdate, required this.onMeUpdated});
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
@@ -54,6 +55,7 @@ class _HomeShellState extends State<HomeShell> {
             me: widget.me,
             role: role,
             onRoleChanged: _switchRole,
+            onMeUpdated: widget.onMeUpdated,
             onLogout: widget.onLogout,
             onCheckUpdate: widget.onCheckUpdate,
           ),

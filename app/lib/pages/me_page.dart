@@ -249,17 +249,37 @@ class _MePageState extends State<MePage> with AutomaticKeepAliveClientMixin {
             const SizedBox(height: 6),
             works.isEmpty
                 ? const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: Text('还没有作品，点右上角相机添加', style: TextStyle(fontSize: 12, color: Colors.black26))))
-                : SizedBox(height: 96, child: ListView.separated(scrollDirection: Axis.horizontal, itemCount: works.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (_, i) => Stack(children: [
-                      ClipRRect(borderRadius: BorderRadius.circular(10),
-                          child: Image.file(File(works[i]), width: 96, height: 96, fit: BoxFit.cover)),
-                      Positioned(top: 2, right: 2, child: GestureDetector(
-                        onTap: () => _removeWork(i),
-                        child: Container(padding: const EdgeInsets.all(2), decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-                            child: const Icon(Icons.close, size: 12, color: Colors.white))),
-                      )),
-                    ])),
+                : SizedBox(
+                    height: 96,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: works.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) {
+                        final w = works[i];
+                        return Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.file(File(w), width: 96, height: 96, fit: BoxFit.cover),
+                            ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: GestureDetector(
+                                onTap: () => _removeWork(i),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                                  child: const Icon(Icons.close, size: 12, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
           ]),
         ))),
         const SizedBox(height: 24),

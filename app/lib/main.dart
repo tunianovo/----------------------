@@ -188,6 +188,7 @@ class _AppGateState extends State<AppGate> {
             session.value = null;
           },
           onCheckUpdate: () => _checkUpdate(context, manual: true),
+          onMeUpdated: (u) => session.value = u,
         );
       },
     );
