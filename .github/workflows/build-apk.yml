@@ -30,26 +30,16 @@ jobs:
         with:
           channel: stable
 
-      # 在脚手架目录生成 android/ 平台目录（仓库只保存 Dart 代码，不保存平台脚手架）
       - name: Scaffold android platform
         run: |
           flutter config --no-analytics
           flutter create --org com.jsgx --project-name jsgx_app scaffold
           cp -r scaffold/android ./android
-          # 应用名称
           sed -i 's/android:label="jsgx_app"/android:label="己曜"/' android/app/src/main/AndroidManifest.xml
-          # 发布版需要显式声明网络权限
-          # flutter_local_notifications 需要核心库脱糖
-          sed -i 's|targetCompatibility = JavaVersion.VERSION_11|targetCompatibility = JavaVersion.VERSION_11
-        isCoreLibraryDesugaringEnabled = true|' android/app/build.gradle.kts || true
-          sed -i 's|targetCompatibility JavaVersion.VERSION_11|targetCompatibility JavaVersion.VERSION_11
-        coreLibraryDesugaringEnabled true|' android/app/build.gradle || true
-          printf '
-dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-}
-' >> android/app/build.gradle.kts
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><application|' android/app/src/main/AndroidManifest.xml
+          sed -i 's|targetCompatibility = JavaVersion.VERSION_11|targetCompatibility = JavaVersion.VERSION_11\n        isCoreLibraryDesugaringEnabled = true|' android/app/build.gradle.kts || true
+          sed -i 's|targetCompatibility JavaVersion.VERSION_11|targetCompatibility JavaVersion.VERSION_11\n        coreLibraryDesugaringEnabled true|' android/app/build.gradle || true
+          printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> android/app/build.gradle.kts
 
       - name: Apply launcher icons
         run: dart run flutter_launcher_icons
@@ -76,11 +66,14 @@ dependencies {
           tag_name: app-v1.0.4
           name: 己曜 App v1.0.4
           body: |
-            己曜安卓客户端 v1.0.4：消息页用户列表（找得到聊过的人）、用户端发布需求、需求大厅接单、客服入口、手机号验证码注册
-            - 账号登录注册（与网站数据互通）
-            - 服务市场浏览与下单
-            - 私信聊天、在线状态显示
-            - arm64 适合近几年的手机；老设备用 arm32
+            己曜安卓客户端 v1.0.4
+            - 后台消息手机通知
+            - 聊天发送定位
+            - 页面本地缓存秒开（含订单本地保存）
+            - 本机头像设置
+            - 消息页用户列表、按账号找人
+            - 用户端发布需求、需求大厅接单
+            - 客服入口、手机号验证码注册
           files: |
             app/dist/jsgx-app-arm64.apk
             app/dist/jsgx-app-arm32.apk
