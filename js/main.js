@@ -275,7 +275,11 @@ function switchPage(page) {
     if (page === 'tech-hall') renderTechHall();
     if (page === 'cooperate') renderCooperate();
     if (page === 'orders') { renderOrders(); clearOrderNotifications(); }
-    if (page === 'messages') { renderMessages(); updateBadges(); }
+    if (page === 'messages') {
+        renderMessages();
+        updateBadges();
+        loadGroupData().then(() => { if (currentPage === 'messages') renderMessages(); });
+    }
     if (page === 'service-market') renderServiceMarket();
 
     setTimeout(initScrollReveal, 100);
@@ -1035,7 +1039,8 @@ async function renderMessages() {
     });
     document.getElementById('msgEmpty').style.display = convs.length === 0 ? 'flex' : 'none';
     const users = DB.get('sp_users', []);
-    document.getElementById('msgList').innerHTML = convs.map(c => {
+    let html = kefuTileHtml() + inviteBannerHtml() + groupTileHtml();
+    html += convs.map(c => {
         const u = users.find(x => Number(x.id) === Number(c.peer_id));
         const displayName = c.name || (u ? (u.real_name || u.username) : '用户');
         const avatar = c.avatar || (u && u.avatar) || null;
@@ -1052,7 +1057,167 @@ async function renderMessages() {
             ${c.unread > 0 ? `<span class="msg-item-badge">${c.unread}</span>` : ''}
         </div>`;
     }).join('');
+    document.getElementById('msgList').innerHTML = html;
     updateBadges();
+}
+
+// ========== 群聊 + 官方客服（网页版） ==========
+let myGroups = [], groupInvites = [], kefuUser = null;
+
+function isGroupChat() { return String(currentChatKey || '').startsWith('g_'); }
+
+async function loadGroupData() {
+    try {
+        const d = await apiFetch('/groups/mine').then(r => r.json());
+        myGroups = d.joined || [];
+        groupInvites = d.invites || [];
+    } catch (e) {}
+    try {
+        if (!kefuUser) {
+            const u = await apiFetch('/users?username=kefu01').then(r => r.json());
+            kefuUser = (u && u[0]) || null;
+        }
+    } catch (e) {}
+}
+
+function kefuTileHtml() {
+    if (!kefuUser) return '';
+    return `<div class="msg-item" onclick="selectChat('kefu_${kefuUser.id}')">
+        <div class="msg-item-avatar" style="background:linear-gradient(135deg,#0A6CFF,#00C2FF);">🎧</div>
+        <div class="msg-item-info">
+            <div class="msg-item-name">官方客服<span class="online-dot"></span></div>
+            <div class="msg-item-preview">交易分歧、账号问题随时留言</div>
+        </div>
+    </div>`;
+}
+
+function inviteBannerHtml() {
+    if (!groupInvites.length) return '';
+    return '<div style="margin:8px 10px;padding:10px 12px;background:#EDF2FF;border-radius:12px;">' +
+        groupInvites.map(inv =>
+            '<div style="display:flex;align-items:center;gap:8px;font-size:12px;">' +
+            '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + inv.inviter_name + ' 邀请你加入「' + inv.name + '」</span>' +
+            '<button onclick="handleGroupInvite(' + inv.invite_id + ',false)" style="font-size:11px;padding:4px 8px;border:none;background:none;color:#86868b;cursor:pointer;">拒绝</button>' +
+            '<button onclick="handleGroupInvite(' + inv.invite_id + ',true)" style="font-size:11px;padding:4px 10px;border:none;background:#0A6CFF;color:#fff;border-radius:12px;cursor:pointer;">同意</button>' +
+            '</div>').join('') +
+        '</div>';
+}
+
+function groupTileHtml() {
+    if (!myGroups.length) return '';
+    let h = '<div style="padding:10px 16px 2px;font-size:12px;color:#86868b;">我的群聊</div>';
+    h += '<div style="display:flex;gap:12px;overflow-x:auto;padding:4px 16px 8px;">';
+    h += myGroups.map(g =>
+        '<div style="width:64px;text-align:center;cursor:pointer;" onclick="selectChat(\'g_' + g.group_id + '\')">' +
+        '<div style="width:48px;height:48px;margin:0 auto;border-radius:50%;background:#EDF2FF;display:flex;align-items:center;justify-content:center;font-size:22px;">👥</div>' +
+        '<div style="font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + g.name + '</div>' +
+        '</div>').join('');
+    h += '</div><div style="height:1px;background:#E8EAED;margin:4px 0;"></div>';
+    return h;
+}
+
+async function handleGroupInvite(inviteId, accept) {
+    try {
+        await apiFetch('/groups/invites/handle', { method: 'POST', body: JSON.stringify({ invite_id: inviteId, accept: accept }) });
+        await loadGroupData();
+        renderMessages();
+        showToast(accept ? '已加入群聊' : '已拒绝', 'success');
+    } catch (e) {
+        showToast('操作失败：' + e.message, 'error');
+    }
+}
+
+// 发起群聊弹窗：填群名 + 勾选成员
+async function showCreateGroup() {
+    if (!currentUser) { showLoginModal(); return; }
+    let users = [];
+    try { users = await apiFetch('/users').then(r => r.json()); } catch (e) {}
+    users = (users || []).filter(u => Number(u.id) !== Number(currentUser.id));
+    const selected = new Set();
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.id = 'groupCreateModal';
+    modal.innerHTML = '<div class="modal-content modal-sm">' +
+        '<div class="modal-header"><h3>发起群聊</h3><span class="modal-close" onclick="this.closest(\'.modal\').remove()">×</span></div>' +
+        '<div class="modal-body">' +
+        '<div class="form-group"><label>群名称</label><input type="text" id="gName" placeholder="给群起个名字"></div>' +
+        '<div class="form-group"><label>选择成员（对方同意后进群）</label>' +
+        '<div id="gMembers" style="max-height:260px;overflow-y:auto;border:1px solid #E5E5E7;border-radius:12px;padding:6px;">' +
+        (users.length ? users.map(u =>
+            '<label style="display:flex;align-items:center;gap:8px;padding:7px 8px;cursor:pointer;border-radius:8px;" onmouseover="this.style.background=\'#F5F6F8\'" onmouseout="this.style.background=\'\'">' +
+            '<input type="checkbox" data-uid="' + u.id + '" onchange="this.checked?1:1">' +
+            '<span style="font-size:13px;">' + (u.real_name || u.username) + '</span>' +
+            '<span style="font-size:11px;color:#86868b;">@' + u.username + '</span>' +
+            '</label>').join('') : '<div style="padding:16px;text-align:center;color:#86868b;font-size:12px;">暂无其他用户</div>') +
+        '</div></div>' +
+        '<button class="btn-primary btn-block" onclick="submitCreateGroup()">创建并发出邀请</button>' +
+        '</div></div>';
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    modal.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const uid = Number(cb.dataset.uid);
+            if (cb.checked) selected.add(uid); else selected.delete(uid);
+        });
+    });
+    document.body.appendChild(modal);
+    window._groupSelected = selected;
+}
+
+async function submitCreateGroup() {
+    const name = document.getElementById('gName').value.trim();
+    const ids = [...(window._groupSelected || [])];
+    if (!name) { showToast('请填写群名称', 'error'); return; }
+    if (!ids.length) { showToast('请至少选择一位成员', 'error'); return; }
+    try {
+        await apiFetch('/groups', { method: 'POST', body: JSON.stringify({ name: name, member_ids: ids }) });
+        const m = document.getElementById('groupCreateModal');
+        if (m) m.remove();
+        showToast('群聊已创建，等待成员同意加入', 'success');
+        await loadGroupData();
+        renderMessages();
+    } catch (e) {
+        showToast('创建失败：' + e.message, 'error');
+    }
+}
+
+// 群聊窗口渲染（复用聊天窗口 DOM）
+async function renderGroupChatWindow() {
+    const gid = String(currentChatKey).slice(2);
+    let msgs = [];
+    try {
+        msgs = arrFrom(await apiFetch('/group/history?group_id=' + gid).then(r => r.json()));
+    } catch (e) {
+        document.getElementById('msgChatBody').innerHTML = '<div style="padding:16px;color:#e74c3c;font-size:13px;">群消息加载失败：' + e.message + '</div>';
+        return;
+    }
+    document.getElementById('msgChatHeader').innerHTML =
+        '<div class="msg-chat-header-avatar" style="background:#EDF2FF;color:#0A6CFF;display:flex;align-items:center;justify-content:center;">👥</div>' +
+        '<div class="msg-chat-header-info"><div class="msg-chat-header-name">' + (myGroups.find(g => String(g.group_id) === gid) || { name: '群聊' }).name + '</div></div>';
+    const body = document.getElementById('msgChatBody');
+    const newBody = msgs.length ? msgs.map(m => {
+        const isSelf = Number(m.sender_id) === Number(currentUser.id);
+        return '<div style="font-size:10px;color:#86868b;margin:' + (isSelf ? '4px 8px 0 auto;' : '4px 0 0 8px;') + 'max-width:70%;text-align:' + (isSelf ? 'right' : 'left') + ';">' + (isSelf ? '我' : (m.sender_name || '成员')) + '</div>' +
+            '<div class="msg-bubble ' + (isSelf ? 'self' : 'other') + '">' + m.content + '<div class="msg-time">' + formatTime(m.create_time) + '</div></div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#86868b;font-size:13px;">群聊还没有消息，发第一条吧～</div>';
+    if (body.innerHTML !== newBody) {
+        body.innerHTML = newBody;
+        body.scrollTop = body.scrollHeight;
+    }
+}
+
+// 群聊发送
+async function sendGroupMessage() {
+    const input = document.getElementById('msgInput');
+    const content = input.value.trim();
+    if (!content) return;
+    const gid = String(currentChatKey).slice(2);
+    try {
+        await apiFetch('/group/send', { method: 'POST', body: JSON.stringify({ group_id: Number(gid), content: content }) });
+        input.value = '';
+        await renderGroupChatWindow();
+    } catch (e) {
+        showToast('发送失败：' + e.message, 'error');
+    }
 }
 
 function selectChat(chatKey) {
@@ -1070,6 +1235,8 @@ async function renderChatWindow() {
     }
     document.getElementById('msgChatPlaceholder').style.display = 'none';
     document.getElementById('msgChatWindow').style.display = 'flex';
+
+    if (isGroupChat()) { await renderGroupChatWindow(); return; }
 
     const peerId = currentChatKey;
     const users = DB.get('sp_users', []);
@@ -1146,6 +1313,7 @@ async function sendChatMessage() {
     const input = document.getElementById('msgInput');
     const content = input.value.trim();
     if (!content || !currentChatKey) return;
+    if (isGroupChat()) { await sendGroupMessage(); return; }
     try {
         await sendPrivateMsg(currentChatKey, content);
         input.value = '';

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <title>技能共享平台 - 让每一项技能都有价值</title>
-    <link rel="stylesheet" href="css/style.css?v=20260830b">
+    <link rel="stylesheet" href="css/style.css?v=20260831">
 </head>
 <body>
 
@@ -265,7 +265,10 @@
             <div class="msg-sidebar">
                 <div class="msg-sidebar-header">
                     <h3>消息</h3>
-                    <button class="new-chat-btn" onclick="showNewChatModal()">＋ 发起聊天</button>
+                    <div style="display:flex;gap:6px;">
+                        <button class="new-chat-btn" style="background:#0A6CFF;" onclick="showCreateGroup()">👥 群聊</button>
+                        <button class="new-chat-btn" onclick="showNewChatModal()">＋ 聊天</button>
+                    </div>
                 </div>
                 <div class="msg-list" id="msgList"></div>
                 <div class="msg-empty" id="msgEmpty" style="display:none;">
@@ -604,6 +607,6 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<script src="js/main.js?v=20260830b"></script>
+<script src="js/main.js?v=20260831"></script>
 </body>
 </html>
