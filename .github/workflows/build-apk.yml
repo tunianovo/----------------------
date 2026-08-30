@@ -35,11 +35,7 @@ jobs:
           flutter config --no-analytics
           flutter create --org com.jsgx --project-name jsgx_app scaffold
           cp -r scaffold/android ./android
-          sed -i 's/android:label="jsgx_app"/android:label="己曜"/' android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.VIBRATE"/><uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/><uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/><application|' android/app/src/main/AndroidManifest.xml
-          node -e "const fs=require('fs');for(const f of ['android/app/build.gradle.kts','android/app/build.gradle']){if(!fs.existsSync(f))continue;let c=fs.readFileSync(f,'utf8');if(f.endsWith('.kts')){c=c.replace(/targetCompatibility = JavaVersion\.VERSION_\d+/g,function(m){return m+'\n        isCoreLibraryDesugaringEnabled = true'})}else{c=c.replace(/targetCompatibility( =)? JavaVersion\.VERSION_\d+/g,function(m){return m+'\n        coreLibraryDesugaringEnabled true'})}fs.writeFileSync(f,c)}"
-          [ -f android/app/build.gradle.kts ] && printf '%s\n' 'dependencies {' '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' '}' >> android/app/build.gradle.kts || true
-          [ -f android/app/build.gradle ] && printf '%s\n' 'dependencies {' '    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"' '}' >> android/app/build.gradle || true
+          node tools/patch_gradle.js
 
       - name: Restore signing keystore
         uses: actions/cache@v4
@@ -47,12 +43,11 @@ jobs:
           path: android/app/keystore.jks
           key: jyao-signing-v1
 
-      - name: Signing setup (stable signature + disable R8)
+      - name: Signing setup
         run: |
           if [ ! -f android/app/keystore.jks ]; then
             keytool -genkeypair -v -keystore android/app/keystore.jks -alias jyao -keyalg RSA -keysize 2048 -validity 10000 -storepass jyao2026 -keypass jyao2026 -dname "CN=jyao,O=jyao,C=CN"
           fi
-          node -e "const fs=require('fs');const f='android/app/build.gradle.kts';let c=fs.readFileSync(f,'utf8');if(!c.includes('isMinifyEnabled')){c=c.replace('release {','release {\n            isMinifyEnabled = false\n            isShrinkResources = false')}c=c.replace('signingConfig = signingConfigs.debug','signingConfig = signingConfigs.create(\"release\") {\n                storeFile = file(\"keystore.jks\")\n                storePassword = \"jyao2026\"\n                keyAlias = \"jyao\"\n                keyPassword = \"jyao2026\"\n            }');fs.writeFileSync(f,c)}"
 
       - name: Apply launcher icons
         run: dart run flutter_launcher_icons
