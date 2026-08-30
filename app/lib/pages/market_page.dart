@@ -318,7 +318,7 @@ class _MarketPageState extends State<MarketPage> {
                 ],
               ),
             ),
-          )
+          ),
         if (error != null)
           SliverToBoxAdapter(
             child: Padding(
