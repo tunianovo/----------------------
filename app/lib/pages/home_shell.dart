@@ -105,16 +105,14 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(
               icon: Badge(
                 isLabelVisible: unreadTotal > 0,
-                label: Text(unreadTotal > 99 ? '99+' : '$unreadTotal',
-                    style: const TextStyle(fontSize: 9, color: Colors.white)),
                 backgroundColor: const Color(0xFFFF3B30),
+                smallSize: 9,
                 child: const Icon(Icons.chat_bubble_outline),
               ),
               selectedIcon: Badge(
                 isLabelVisible: unreadTotal > 0,
-                label: Text(unreadTotal > 99 ? '99+' : '$unreadTotal',
-                    style: const TextStyle(fontSize: 9, color: Colors.white)),
                 backgroundColor: const Color(0xFFFF3B30),
+                smallSize: 9,
                 child: const Icon(Icons.chat_bubble),
               ),
               label: '消息'),

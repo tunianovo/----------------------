@@ -245,11 +245,13 @@ class GroupInfo {
   final int groupId;
   final String name;
   final int memberCount;
-  GroupInfo({required this.groupId, required this.name, required this.memberCount});
+  final List<dynamic> members; // [{user_id, role}]
+  GroupInfo({required this.groupId, required this.name, required this.memberCount, this.members = const []});
   factory GroupInfo.fromJson(dynamic j) => GroupInfo(
         groupId: (j['group_id'] as num).toInt(),
         name: (j['name'] ?? '群聊') as String,
         memberCount: (j['member_count'] as num?)?.toInt() ?? 0,
+        members: (j['members'] ?? []) as List<dynamic>,
       );
 }
 
@@ -568,6 +570,10 @@ class Api {
 
   Future<void> groupSend(int groupId, String content) async {
     await _send('POST', '/group/send', body: {'group_id': groupId, 'content': content});
+  }
+
+  Future<void> quitGroup(int groupId) async {
+    await _send('POST', '/groups/quit', body: {'group_id': groupId});
   }
 
   // ---- 共创发布与推荐 ----

@@ -115,6 +115,19 @@ class _ChatPageState extends State<ChatPage> {
             _plusItem(Icons.photo_outlined, '照片', () { Navigator.pop(context); _sendImage(); }),
             _plusItem(Icons.insert_drive_file_outlined, '文件', () { Navigator.pop(context); _sendFile(); }),
           ]),
+          const Divider(height: 18),
+          // 删除聊天记录：长按替代方案，任何消息都可选中删除
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44),
+                side: const BorderSide(color: Color(0xFFE5484D)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() { selecting = true; selected.clear(); });
+            },
+            icon: const Icon(Icons.delete_sweep_outlined, size: 18, color: Color(0xFFE5484D)),
+            label: const Text('删除聊天记录', style: TextStyle(color: Color(0xFFE5484D))),
+          )),
           const SizedBox(height: 8),
         ]))));
   }
@@ -237,7 +250,13 @@ class _ChatPageState extends State<ChatPage> {
         titleSpacing: 0,
         title: Row(children: [
           GestureDetector(
-            onTap: widget.isGroup ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: widget.realId))),
+            onTap: () {
+              if (widget.isGroup) {
+                _showGroupInfo();
+              } else {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: widget.realId)));
+              }
+            },
             child: CircleAvatar(radius: 18, backgroundColor: widget.isGroup ? kPrimary.withOpacity(0.15) : const Color(0xFFEDF2FF),
                 child: widget.isGroup
                     ? const Icon(Icons.group, size: 20, color: kPrimary)
@@ -260,7 +279,7 @@ class _ChatPageState extends State<ChatPage> {
                 final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       title: const Text('删除消息'),
-                      content: Text('删除选中的 ${selected.length} 条消息？（仅删除你发送的）'),
+                      content: Text('删除选中的 ${selected.length} 条消息？'),
                       actions: [
                         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
                         FilledButton(style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE5484D)),
@@ -308,8 +327,8 @@ class _ChatPageState extends State<ChatPage> {
         final isLastSelf = isSelf && (i + 1 >= messages.length || messages[i + 1].senderId != widget.meId);
         final isSelected = selected.contains(m.id);
         final bubble = GestureDetector(
-          onLongPress: isSelf ? () { setState(() { selecting = true; selected.add(m.id); }); } : null,
-          onTap: (selecting && isSelf) ? () { setState(() { if (selected.contains(m.id)) { selected.remove(m.id); } else { selected.add(m.id); } }); } : null,
+          onLongPress: () { setState(() { selecting = true; selected.add(m.id); }); },
+          onTap: selecting ? () { setState(() { if (selected.contains(m.id)) { selected.remove(m.id); } else { selected.add(m.id); } }); } : null,
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 2),
             padding: const EdgeInsets.all(2),
@@ -410,6 +429,82 @@ class _ChatPageState extends State<ChatPage> {
         ]),
       ),
     );
+  }
+
+  // 群信息：群名、成员列表、退出群聊
+  Future<void> _showGroupInfo() async {
+    try {
+      final mine = await api.myGroups();
+      final g = mine.where((x) => x.groupId == widget.realId).toList();
+      if (g.isEmpty) { _toast('群信息加载失败', isError: true); return; }
+      final memberIds = (await api.myGroups())
+          .where((x) => x.groupId == widget.realId)
+          .expand((x) => x.members)
+          .map((m) => (m['user_id'] as num).toInt())
+          .toList();
+      final users = await api.usersByIds(memberIds);
+      if (!mounted) return;
+      await showModalBottomSheet(context: context, backgroundColor: Colors.white,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+          builder: (sheetCtx) => SafeArea(child: Padding(padding: const EdgeInsets.all(20), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 14),
+            Row(children: [
+              const Icon(Icons.group, color: kPrimary, size: 26),
+              const SizedBox(width: 10),
+              Expanded(child: Text(widget.peerName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+              Text('共 ${users.length} 人', style: const TextStyle(fontSize: 12, color: Colors.black45)),
+            ]),
+            const SizedBox(height: 12),
+            ConstrainedBox(constraints: const BoxConstraints(maxHeight: 260), child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: users.length,
+              itemBuilder: (_, i) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                leading: UserAvatar(url: users[i].avatar, name: users[i].displayName, radius: 18),
+                title: Text(users[i].displayName, style: const TextStyle(fontSize: 14)),
+                subtitle: Text('@' + users[i].username, style: const TextStyle(fontSize: 11)),
+              ),
+            )),
+            const SizedBox(height: 14),
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46),
+                  side: const BorderSide(color: Color(0xFFE5484D)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              onPressed: () async {
+                final ok = await showDialog<bool>(context: sheetCtx, builder: (ctx) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      title: const Text('退出群聊'),
+                      content: const Text('退出后将不再接收该群消息，确定退出吗？'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                        FilledButton(style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE5484D)),
+                            onPressed: () => Navigator.pop(ctx, true), child: const Text('退出')),
+                      ],
+                    ));
+                if (ok != true) return;
+                try {
+                  await api.quitGroup(widget.realId);
+                  if (!sheetCtx.mounted) return;
+                  Navigator.pop(sheetCtx);
+                  if (!mounted) return;
+                  Navigator.pop(context); // 返回消息列表
+                  _toast('已退出群聊', isError: false);
+                } on ApiException catch (e) {
+                  if (sheetCtx.mounted) {
+                    Navigator.pop(sheetCtx);
+                    _toast(e.message, isError: true);
+                  }
+                }
+              },
+              icon: const Icon(Icons.logout_rounded, size: 18, color: Color(0xFFE5484D)),
+              label: const Text('退出群聊', style: TextStyle(color: Color(0xFFE5484D))),
+            )),
+          ]))));
+    } catch (e) {
+      _toast('加载群信息失败', isError: true);
+    }
   }
 
   Widget _inputBar() => Container(

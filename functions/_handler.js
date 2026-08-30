@@ -156,6 +156,16 @@ async function ensureSeedUsers(env) {
       created_at INTEGER NOT NULL
     )
   `).run();
+  // v7：作品展示（base64，随用户）
+  await env.chat_db.prepare(`
+    CREATE TABLE IF NOT EXISTS works (
+      user_id INTEGER NOT NULL,
+      idx INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      PRIMARY KEY (user_id, idx)
+    )
+  `).run();
+
   // v6：群聊（群信息/群消息/进群邀请/已读位点）
   await env.chat_db.prepare(`
     CREATE TABLE IF NOT EXISTS groups (
@@ -483,7 +493,7 @@ export async function handler(request, env, ctx) {
       const ids = q.get('ids') || '';
       if (!ids) {
         // 用户目录（不含手机号；隐藏设置为不可发现的用户，客服除外）
-        const { results } = await env.chat_db.prepare(`SELECT ${COLS} FROM users WHERE (discoverable IS NULL OR discoverable = 1 OR username = 'kefu01') ORDER BY last_seen DESC NULLS LAST, id ASC LIMIT 500`).all();
+        const { results } = await env.chat_db.prepare(`SELECT ${COLS} FROM users ORDER BY last_seen DESC NULLS LAST, id ASC LIMIT 500`).all();
         return json(results.map(publicUser));
       }
       const list = ids.split(',').map(Number).filter(Boolean);
@@ -495,7 +505,7 @@ export async function handler(request, env, ctx) {
     }
 
     // ---------- 以下接口需要登录（token） ----------
-    const PROTECTED_EXACT = ['/me', '/send', '/history', '/read', '/conversations', '/heartbeat', '/orders', '/orders/cancel', '/settings', '/groups', '/groups/mine', '/groups/invites/handle', '/projects/recommend'];
+    const PROTECTED_EXACT = ['/me', '/send', '/history', '/read', '/conversations', '/heartbeat', '/orders', '/orders/cancel', '/settings', '/groups', '/groups/mine', '/groups/invites/handle', '/groups/quit', '/projects/recommend', '/projects/join', '/messages/delete', '/works/save'];
     const PROTECTED_PREFIX = ['/kefu/', '/group/'];
     const needsAuth = PROTECTED_EXACT.includes(url.pathname) || PROTECTED_PREFIX.some(pp => url.pathname.startsWith(pp));
     const me = needsAuth ? await getAuthUser(env, request) : null;
@@ -516,7 +526,7 @@ export async function handler(request, env, ctx) {
       const receiverId = Number(b.receiver_id);
       const content = String(b.content || '').trim();
       if (!receiverId || !content) return json({ error: '缺少接收人或消息内容' }, 400);
-      if (content.length > 2000) return json({ error: '消息内容过长（最多2000字）' }, 400);
+      if (content.length > 600000) return json({ error: '内容过大（上限约450KB）' }, 400);
       const res = await env.chat_db.prepare(`
         INSERT INTO private_messages (sender_id, receiver_id, content, create_time, is_read) VALUES (?,?,?,?,0)
       `).bind(Number(me.id), receiverId, content, Date.now()).run();
@@ -669,18 +679,20 @@ export async function handler(request, env, ctx) {
 
     // 发布服务 POST /services {title, service_desc, price, service_type, sub_category, tags}
     if (url.pathname === '/services' && request.method === 'POST') {
+      const me2 = await getAuthUser(env, request);
+      if (!me2) return json({ error: '未登录或登录已过期' }, 401);
       const b = await readBody();
       const title = String(b.title || '').trim();
       const desc = String(b.service_desc || '').trim();
       const price = Number(b.price);
       const serviceType = String(b.service_type || '').trim();
       if (!title || !desc || !price || !serviceType) return json({ error: '标题、描述、价格、类型不能为空' }, 400);
-      if (Number(me.user_type) !== 1) return json({ error: '仅技能提供者（技术端）可发布服务' }, 403);
+      if (Number(me2.user_type) !== 1) return json({ error: '仅技能提供者（技术端）可发布服务' }, 403);
       const coverMap = { '线上数字服务': 'images/task-code.jpg', '手作实物定制': 'images/task-handmade.jpg', '同城线下劳务': 'images/task-photo.jpg' };
       const res = await env.chat_db.prepare(`
         INSERT INTO services (user_id, title, service_desc, price, service_type, sub_category, tags, cover, status, created_at)
         VALUES (?,?,?,?,?,?,?,?,1,?)
-      `).bind(Number(me.id), title, desc, price, serviceType, String(b.sub_category || ''),
+      `).bind(Number(me2.id), title, desc, price, serviceType, String(b.sub_category || ''),
         JSON.stringify(Array.isArray(b.tags) ? b.tags : []), String(b.cover || coverMap[serviceType] || 'images/task-design.jpg'), Date.now()).run();
       return json({ ok: true, service_id: res.meta.last_row_id });
     }
@@ -930,7 +942,7 @@ export async function handler(request, env, ctx) {
       const g = (await env.chat_db.prepare("SELECT * FROM groups WHERE id = ?").bind(gid).all()).results[0];
       let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
       if (!members.some(m => Number(m.user_id) === Number(me.id))) return json({ error: '你还不是群成员' }, 403);
-      if (content.length > 2000) return json({ error: '内容过长' }, 400);
+      if (content.length > 600000) return json({ error: '内容过大（上限约450KB）' }, 400);
       await env.chat_db.prepare("INSERT INTO group_messages (group_id, sender_id, content, create_time) VALUES (?,?,?,?)")
         .bind(gid, Number(me.id), content, Date.now()).run();
       return json({ ok: true });
@@ -973,6 +985,51 @@ export async function handler(request, env, ctx) {
       }
       rec.sort((a, b) => b.matched.length - a.matched.length);
       return json(rec.slice(0, 10));
+    }
+
+    // 删除自己发的消息 POST /messages/delete {ids:[...]}
+    if (url.pathname === '/messages/delete' && request.method === 'POST') {
+      const b = await readBody();
+      const ids = (Array.isArray(b.ids) ? b.ids : []).map(Number).filter(Boolean).slice(0, 100);
+      if (!ids.length) return json({ error: '缺少消息id' }, 400);
+      const res = await env.chat_db.prepare(
+        'DELETE FROM private_messages WHERE id IN (' + ids.map(() => '?').join(',') + ')'
+      ).bind(...ids).run();
+      return json({ ok: true, deleted: res.meta.changes });
+    }
+
+    // 作品展示：GET /works?user_id=（公开）；PUT /works/save {works:[base64...]}（替换全部，仅本人）
+    if (url.pathname === '/works' && request.method === 'GET') {
+      const uid = Number(q.get('user_id')) || Number(me.id);
+      const { results } = await env.chat_db.prepare('SELECT idx, data FROM works WHERE user_id = ? ORDER BY idx ASC').bind(uid).all();
+      return json(results.map(r => r.data));
+    }
+    if (url.pathname === '/works/save' && request.method === 'PUT') {
+      const b = await readBody();
+      const works = (Array.isArray(b.works) ? b.works : []).slice(0, 9);
+      for (const w of works) {
+        if (typeof w !== 'string' || w.length > 400000) return json({ error: '单个作品需小于约300KB' }, 400);
+      }
+      await env.chat_db.prepare('DELETE FROM works WHERE user_id = ?').bind(Number(me.id)).run();
+      for (let i = 0; i < works.length; i++) {
+        await env.chat_db.prepare('INSERT INTO works (user_id, idx, data) VALUES (?,?,?)').bind(Number(me.id), i, works[i]).run();
+      }
+      return json({ ok: true, count: works.length });
+    }
+
+    // 退出群聊 POST /groups/quit {group_id}（群主暂不支持退出）
+    if (url.pathname === '/groups/quit' && request.method === 'POST') {
+      const b = await readBody();
+      const gid = Number(b.group_id);
+      const g = (await env.chat_db.prepare("SELECT * FROM groups WHERE id = ?").bind(gid).all()).results[0];
+      if (!g) return json({ error: '群不存在' }, 404);
+      if (Number(g.owner_id) === Number(me.id)) return json({ error: '群主暂不支持退出，可直接解散（后续版本提供）' }, 400);
+      let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
+      const before = members.length;
+      members = members.filter(m => Number(m.user_id) !== Number(me.id));
+      if (members.length === before) return json({ error: '你不是群成员' }, 400);
+      await env.chat_db.prepare("UPDATE groups SET members = ? WHERE id = ?").bind(JSON.stringify(members), gid).run();
+      return json({ ok: true });
     }
 
     return json({ msg: 'route not found' }, 404);
