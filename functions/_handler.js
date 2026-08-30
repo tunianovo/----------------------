@@ -1017,6 +1017,21 @@ export async function handler(request, env, ctx) {
       return json({ ok: true, count: works.length });
     }
 
+    // 删除群消息 POST /group/messages/delete {group_id, ids:[...]}（群成员可删）
+    if (url.pathname === '/group/messages/delete' && request.method === 'POST') {
+      const b = await readBody();
+      const gid = Number(b.group_id);
+      const ids = (Array.isArray(b.ids) ? b.ids : []).map(Number).filter(Boolean).slice(0, 100);
+      if (!gid || !ids.length) return json({ error: '缺少群或消息id' }, 400);
+      const g = (await env.chat_db.prepare("SELECT * FROM groups WHERE id = ?").bind(gid).all()).results[0];
+      let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
+      if (!members.some(m => Number(m.user_id) === Number(me.id))) return json({ error: '你还不是群成员' }, 403);
+      const res = await env.chat_db.prepare(
+        'DELETE FROM group_messages WHERE group_id = ? AND id IN (' + ids.map(() => '?').join(',') + ')'
+      ).bind(gid, ...ids).run();
+      return json({ ok: true, deleted: res.meta.changes });
+    }
+
     // 退出群聊 POST /groups/quit {group_id}（群主暂不支持退出）
     if (url.pathname === '/groups/quit' && request.method === 'POST') {
       const b = await readBody();
