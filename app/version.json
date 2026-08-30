@@ -1,0 +1,5 @@
+{
+  "version": "1.0.2",
+  "url": "https://azhegezhege.pages.dev/app/jsgx-app.apk",
+  "notes": "v1.0.2：修复消息列表会话丢失；新增身份切换（用户端/技术端）、服务分类筛选、共创项目、发布服务"
+}
