@@ -588,3 +588,11 @@ img { max-width: 100%; display: block; }
     .footer-container { grid-template-columns: 1fr; }
     .modal-sm, .modal-md, .modal-lg { width: 100%; }
 }
+
+/* ========== 消息悬停删除 + 已读回执 ========== */
+.msg-row { display: flex; align-items: flex-end; gap: 6px; }
+.msg-row.self { justify-content: flex-end; flex-direction: row-reverse; }
+.msg-del { display: none; border: none; background: #F0F0F3; color: #E5484D; font-size: 11px; padding: 4px 9px; border-radius: 10px; cursor: pointer; }
+.msg-row:hover .msg-del { display: inline-block; }
+.msg-read { font-size: 9px; color: #86868b; margin: 1px 6px 0; text-align: right; }
+.msg-read.read { color: #0A6CFF; }

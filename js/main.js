@@ -1197,11 +1197,38 @@ async function renderGroupChatWindow() {
     const newBody = msgs.length ? msgs.map(m => {
         const isSelf = Number(m.sender_id) === Number(currentUser.id);
         return '<div style="font-size:10px;color:#86868b;margin:' + (isSelf ? '4px 8px 0 auto;' : '4px 0 0 8px;') + 'max-width:70%;text-align:' + (isSelf ? 'right' : 'left') + ';">' + (isSelf ? '我' : (m.sender_name || '成员')) + '</div>' +
-            '<div class="msg-bubble ' + (isSelf ? 'self' : 'other') + '">' + m.content + '<div class="msg-time">' + formatTime(m.create_time) + '</div></div>';
+            '<div class="msg-row ' + (isSelf ? 'self' : 'other') + '">' +
+            '<div class="msg-bubble ' + (isSelf ? 'self' : 'other') + '">' + m.content + '<div class="msg-time">' + formatTime(m.create_time) + '</div></div>' +
+            '<button class="msg-del" onclick="deleteWebGroupMsg(' + gid + ', ' + m.id + ')">删除</button>' +
+            '</div>';
     }).join('') : '<div style="padding:20px;text-align:center;color:#86868b;font-size:13px;">群聊还没有消息，发第一条吧～</div>';
     if (body.innerHTML !== newBody) {
         body.innerHTML = newBody;
         body.scrollTop = body.scrollHeight;
+    }
+}
+
+// 删除私聊消息（云端同步）
+async function deleteWebMsg(id) {
+    if (!confirm('确定删除这条消息吗？双方都不会再看到。')) return;
+    try {
+        await apiFetch('/messages/delete', { method: 'POST', body: JSON.stringify({ ids: [id] }) });
+        await renderChatWindow();
+        showToast('已删除', 'success');
+    } catch (e) {
+        showToast('删除失败：' + e.message, 'error');
+    }
+}
+
+// 删除群消息（云端同步）
+async function deleteWebGroupMsg(gid, id) {
+    if (!confirm('确定删除这条群消息吗？')) return;
+    try {
+        await apiFetch('/group/messages/delete', { method: 'POST', body: JSON.stringify({ group_id: gid, ids: [id] }) });
+        await renderGroupChatWindow();
+        showToast('已删除', 'success');
+    } catch (e) {
+        showToast('删除失败：' + e.message, 'error');
     }
 }
 
@@ -1260,10 +1287,19 @@ async function renderChatWindow() {
         return;
     }
     const body = document.getElementById('msgChatBody');
+    let lastSelfId = null;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        if (Number(msgs[i].sender_id) === Number(currentUser.id)) { lastSelfId = msgs[i].id; break; }
+    }
     const newBody = msgs.length
         ? msgs.map(m => {
             const isSelf = Number(m.sender_id) === Number(currentUser.id);
-            return `<div class="msg-bubble ${isSelf ? 'self' : 'other'}">${m.content}<div class="msg-time">${formatTime(m.time)}</div></div>`;
+            const isLastSelf = isSelf && m.id === lastSelfId;
+            return `<div class="msg-row ${isSelf ? 'self' : 'other'}">` +
+                `<div class="msg-bubble ${isSelf ? 'self' : 'other'}">${m.content}<div class="msg-time">${formatTime(m.time)}</div></div>` +
+                `<button class="msg-del" onclick="deleteWebMsg(${m.id})">删除</button>` +
+                `</div>` +
+                (isSelf && isLastSelf ? `<div class="msg-read ${m.is_read ? 'read' : ''}">${m.is_read ? '已读' : '未读'}</div>` : '');
         }).join('')
         : '<div style="padding:20px;text-align:center;color:#86868b;font-size:13px;">还没有消息，发送第一条吧～</div>';
     // 内容没变化时不重绘，避免轮询时滚动条跳动
