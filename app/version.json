@@ -1,5 +1,5 @@
 {
-  "version": "1.1.2",
+  "version": "1.1.3",
   "url": "https://azhegezhege.pages.dev/app/jsgx-app.apk",
-  "notes": "v1.1.2 诊断版：启动链路移除通知/后台插件，验证闪退原因"
+  "notes": "v1.1.3：修复启动闪退（根因：打包混淆破坏后台组件）；固定签名，以后更新无需卸载重装；消息提醒恢复且可在设置关闭"
 }
