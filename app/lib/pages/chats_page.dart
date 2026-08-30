@@ -36,7 +36,7 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
     _load();
     _loadUsers();
     _loadGroups();
-    requestNotificationPermission(); // Android 13+ 通知权限
+    // requestNotificationPermission(); // v1.1.2 诊断：暂时禁用通知
     // 每5秒轮询新消息/在线状态
     Stream.periodic(const Duration(seconds: 5)).listen((_) { if (mounted) _load(silent: true); });
   }

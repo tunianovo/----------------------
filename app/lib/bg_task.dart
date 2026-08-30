@@ -79,9 +79,10 @@ void callbackDispatcher() {
 
 /// 注册后台定时轮询（系统保证至少15分钟一次）。逐段保护，失败不影响App
 Future<void> initBackgroundPolling() async {
+  return; // v1.1.2 诊断：整体禁用
   try {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('bg_notify') == false) return; // 用户在设置里关闭了提醒
+    if (prefs.getBool('bg_notify') == false) return;
   } catch (_) {}
   try {
     await Workmanager().initialize(callbackDispatcher);
