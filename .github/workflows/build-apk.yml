@@ -56,13 +56,17 @@ jobs:
           name: jsgx-app-apk
           path: app/dist/*.apk
 
+      - name: Read app version
+        id: ver
+        run: echo "version=$(grep '^version:' app/pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)" >> $GITHUB_OUTPUT
+
       - name: Create/Update release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: app-v1.2.7
-          name: 己曜 App v1.2.7
+          tag_name: app-v${{ steps.ver.outputs.version }}
+          name: 己曜 App v${{ steps.ver.outputs.version }}
           body: |
-            己曜安卓客户端 v1.0.4
+            己曜安卓客户端 v${{ steps.ver.outputs.version }}
             - 后台消息手机通知
             - 聊天发送定位
             - 页面本地缓存秒开（含订单本地保存）
