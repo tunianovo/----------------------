@@ -224,8 +224,8 @@ class _ProjectCard extends StatelessWidget {
           behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('打开群聊失败，请重试'), backgroundColor: Color(0xFFE5484D),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('打开群聊失败，请重试'), backgroundColor: const Color(0xFFE5484D),
           behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
     }
   }
