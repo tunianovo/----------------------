@@ -13,7 +13,7 @@
 const DATA_VERSION = 'v4';
 
 // ========== 前端版本检查：代码更新后自动强制刷新一次，避免设备用旧缓存JS调新接口而静默失败 ==========
-const APP_VERSION = 'v20260830b';
+const APP_VERSION = 'v20260902b';
 try {
     if (localStorage.getItem('sp_app_version') !== APP_VERSION) {
         localStorage.setItem('sp_app_version', APP_VERSION);
@@ -300,12 +300,12 @@ function renderHome() {
     // 热门服务（技术端）
     if (role === 'tech') {
         const services = DB.get('sp_services', []).filter(s => s.status === 1).slice(0, 6);
-        document.getElementById('homeServiceGrid').innerHTML = services.map(s => serviceCardHTML(s)).join('') || '<p style="color:#86868b;">暂无服务</p>';
+        document.getElementById('homeServiceGrid').innerHTML = services.map(s => serviceCardHTML(s)).join('') || '<p style="color:#8D87A3;">暂无服务</p>';
     }
 
     // 共创项目预览
     const projects = DB.get('sp_projects', []).slice(0, 3);
-    document.getElementById('homeProjectGrid').innerHTML = projects.map(p => projectCardHTML(p)).join('') || '<p style="color:#86868b;">暂无项目</p>';
+    document.getElementById('homeProjectGrid').innerHTML = projects.map(p => projectCardHTML(p)).join('') || '<p style="color:#8D87A3;">暂无项目</p>';
 }
 
 // ========== 分类网格渲染 ==========
@@ -545,11 +545,11 @@ function showServiceDetail(id) {
     const users = DB.get('sp_users', []);
     const seller = users.find(u => u.id === s.user_id);
     const coverHtml = s.cover ? `<img src="${s.cover}" onerror="this.style.display='none'">` : '📄';
-    const samplesHtml = (s.sample && s.sample.length > 0) ? s.sample.map(f => fileItemHTML(f)).join('') : '<p style="color:#86868b;font-size:13px;">暂无作品样例</p>';
+    const samplesHtml = (s.sample && s.sample.length > 0) ? s.sample.map(f => fileItemHTML(f)).join('') : '<p style="color:#8D87A3;font-size:13px;">暂无作品样例</p>';
     document.getElementById('detailTitle').textContent = s.title;
     document.getElementById('detailBody').innerHTML = `
         <div class="detail-cover">${coverHtml}</div>
-        <div class="detail-price">¥${s.price}<small style="font-size:14px;font-weight:400;color:#86868b;">/次</small></div>
+        <div class="detail-price">¥${s.price}<small style="font-size:14px;font-weight:400;color:#8D87A3;">/次</small></div>
         <div class="detail-meta">
             <span class="detail-meta-item">👤 ${seller?.real_name || seller?.username || '未知'}</span>
             <span class="detail-meta-item">📁 ${s.service_type}</span>
@@ -1028,7 +1028,7 @@ async function renderMessages() {
             .map(c => normConv(c, currentUser.id))
             .filter(c => c.peer_id != null);
     } catch (e) {
-        document.getElementById('msgList').innerHTML = `<div style="padding:16px;color:#e74c3c;font-size:13px;">会话加载失败：${e.message}<br>请检查后端 API_BASE 是否可访问</div>`;
+        document.getElementById('msgList').innerHTML = `<div style="padding:16px;color:#FB7185;font-size:13px;">会话加载失败：${e.message}<br>请检查后端 API_BASE 是否可访问</div>`;
         document.getElementById('msgEmpty').style.display = 'none';
         return;
     }
@@ -1093,26 +1093,26 @@ function kefuTileHtml() {
 
 function inviteBannerHtml() {
     if (!groupInvites.length) return '';
-    return '<div style="margin:8px 10px;padding:10px 12px;background:#EDE9FE;border-radius:12px;">' +
+    return '<div style="margin:8px 10px;padding:10px 12px;background:rgba(139,92,246,0.15);border-radius:12px;">' +
         groupInvites.map(inv =>
             '<div style="display:flex;align-items:center;gap:8px;font-size:12px;">' +
             '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + inv.inviter_name + ' 邀请你加入「' + inv.name + '」</span>' +
-            '<button onclick="handleGroupInvite(' + inv.invite_id + ',false)" style="font-size:11px;padding:4px 8px;border:none;background:none;color:#86868b;cursor:pointer;">拒绝</button>' +
-            '<button onclick="handleGroupInvite(' + inv.invite_id + ',true)" style="font-size:11px;padding:4px 10px;border:none;background:#7C3AED;color:#fff;border-radius:12px;cursor:pointer;">同意</button>' +
+            '<button onclick="handleGroupInvite(' + inv.invite_id + ',false)" style="font-size:11px;padding:4px 8px;border:none;background:none;color:#8D87A3;cursor:pointer;">拒绝</button>' +
+            '<button onclick="handleGroupInvite(' + inv.invite_id + ',true)" style="font-size:11px;padding:4px 10px;border:none;background:#8B5CF6;color:#fff;border-radius:12px;cursor:pointer;">同意</button>' +
             '</div>').join('') +
         '</div>';
 }
 
 function groupTileHtml() {
     if (!myGroups.length) return '';
-    let h = '<div style="padding:10px 16px 2px;font-size:12px;color:#86868b;">我的群聊</div>';
+    let h = '<div style="padding:10px 16px 2px;font-size:12px;color:#8D87A3;">我的群聊</div>';
     h += '<div style="display:flex;gap:12px;overflow-x:auto;padding:4px 16px 8px;">';
     h += myGroups.map(g =>
         '<div style="width:64px;text-align:center;cursor:pointer;" onclick="selectChat(\'g_' + g.group_id + '\')">' +
-        '<div style="width:48px;height:48px;margin:0 auto;border-radius:50%;background:#EDE9FE;display:flex;align-items:center;justify-content:center;font-size:22px;">👥</div>' +
+        '<div style="width:48px;height:48px;margin:0 auto;border-radius:50%;background:rgba(139,92,246,0.15);display:flex;align-items:center;justify-content:center;font-size:22px;">👥</div>' +
         '<div style="font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + g.name + '</div>' +
         '</div>').join('');
-    h += '</div><div style="height:1px;background:#E8EAED;margin:4px 0;"></div>';
+    h += '</div><div style="height:1px;background:rgba(255,255,255,0.08);margin:4px 0;"></div>';
     return h;
 }
 
@@ -1142,13 +1142,13 @@ async function showCreateGroup() {
         '<div class="modal-body">' +
         '<div class="form-group"><label>群名称</label><input type="text" id="gName" placeholder="给群起个名字"></div>' +
         '<div class="form-group"><label>选择成员（对方同意后进群）</label>' +
-        '<div id="gMembers" style="max-height:260px;overflow-y:auto;border:1px solid #E5E5E7;border-radius:12px;padding:6px;">' +
+        '<div id="gMembers" style="max-height:260px;overflow-y:auto;border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:6px;">' +
         (users.length ? users.map(u =>
-            '<label style="display:flex;align-items:center;gap:8px;padding:7px 8px;cursor:pointer;border-radius:8px;" onmouseover="this.style.background=\'#F5F6F8\'" onmouseout="this.style.background=\'\'">' +
+            '<label style="display:flex;align-items:center;gap:8px;padding:7px 8px;cursor:pointer;border-radius:8px;" onmouseover="this.style.background=\'rgba(139,92,246,0.12)\'" onmouseout="this.style.background=\'\'">' +
             '<input type="checkbox" data-uid="' + u.id + '" onchange="this.checked?1:1">' +
             '<span style="font-size:13px;">' + (u.real_name || u.username) + '</span>' +
-            '<span style="font-size:11px;color:#86868b;">@' + u.username + '</span>' +
-            '</label>').join('') : '<div style="padding:16px;text-align:center;color:#86868b;font-size:12px;">暂无其他用户</div>') +
+            '<span style="font-size:11px;color:#8D87A3;">@' + u.username + '</span>' +
+            '</label>').join('') : '<div style="padding:16px;text-align:center;color:#8D87A3;font-size:12px;">暂无其他用户</div>') +
         '</div></div>' +
         '<button class="btn-primary btn-block" onclick="submitCreateGroup()">创建并发出邀请</button>' +
         '</div></div>';
@@ -1187,21 +1187,21 @@ async function renderGroupChatWindow() {
     try {
         msgs = arrFrom(await apiFetch('/group/history?group_id=' + gid).then(r => r.json()));
     } catch (e) {
-        document.getElementById('msgChatBody').innerHTML = '<div style="padding:16px;color:#e74c3c;font-size:13px;">群消息加载失败：' + e.message + '</div>';
+        document.getElementById('msgChatBody').innerHTML = '<div style="padding:16px;color:#FB7185;font-size:13px;">群消息加载失败：' + e.message + '</div>';
         return;
     }
     document.getElementById('msgChatHeader').innerHTML =
-        '<div class="msg-chat-header-avatar" style="background:#EDE9FE;color:#7C3AED;display:flex;align-items:center;justify-content:center;">👥</div>' +
+        '<div class="msg-chat-header-avatar" style="background:rgba(139,92,246,0.18);color:#C4B5FD;display:flex;align-items:center;justify-content:center;">👥</div>' +
         '<div class="msg-chat-header-info"><div class="msg-chat-header-name">' + (myGroups.find(g => String(g.group_id) === gid) || { name: '群聊' }).name + '</div></div>';
     const body = document.getElementById('msgChatBody');
     const newBody = msgs.length ? msgs.map(m => {
         const isSelf = Number(m.sender_id) === Number(currentUser.id);
-        return '<div style="font-size:10px;color:#86868b;margin:' + (isSelf ? '4px 8px 0 auto;' : '4px 0 0 8px;') + 'max-width:70%;text-align:' + (isSelf ? 'right' : 'left') + ';">' + (isSelf ? '我' : (m.sender_name || '成员')) + '</div>' +
+        return '<div style="font-size:10px;color:#8D87A3;margin:' + (isSelf ? '4px 8px 0 auto;' : '4px 0 0 8px;') + 'max-width:70%;text-align:' + (isSelf ? 'right' : 'left') + ';">' + (isSelf ? '我' : (m.sender_name || '成员')) + '</div>' +
             '<div class="msg-row ' + (isSelf ? 'self' : 'other') + '">' +
             '<div class="msg-bubble ' + (isSelf ? 'self' : 'other') + '">' + m.content + '<div class="msg-time">' + formatTime(m.create_time) + '</div></div>' +
             '<button class="msg-del" onclick="deleteWebGroupMsg(' + gid + ', ' + m.id + ')">删除</button>' +
             '</div>';
-    }).join('') : '<div style="padding:20px;text-align:center;color:#86868b;font-size:13px;">群聊还没有消息，发第一条吧～</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#8D87A3;font-size:13px;">群聊还没有消息，发第一条吧～</div>';
     if (body.innerHTML !== newBody) {
         body.innerHTML = newBody;
         body.scrollTop = body.scrollHeight;
@@ -1283,7 +1283,7 @@ async function renderChatWindow() {
     try {
         msgs = arrFrom(await loadChatHistory(currentUser.id, peerId)).map(normMsg);
     } catch (e) {
-        document.getElementById('msgChatBody').innerHTML = `<div style="padding:16px;color:#e74c3c;font-size:13px;">消息加载失败：${e.message}</div>`;
+        document.getElementById('msgChatBody').innerHTML = `<div style="padding:16px;color:#FB7185;font-size:13px;">消息加载失败：${e.message}</div>`;
         return;
     }
     const body = document.getElementById('msgChatBody');
@@ -1301,7 +1301,7 @@ async function renderChatWindow() {
                 `</div>` +
                 (isSelf && isLastSelf ? `<div class="msg-read ${m.is_read ? 'read' : ''}">${m.is_read ? '已读' : '未读'}</div>` : '');
         }).join('')
-        : '<div style="padding:20px;text-align:center;color:#86868b;font-size:13px;">还没有消息，发送第一条吧～</div>';
+        : '<div style="padding:20px;text-align:center;color:#8D87A3;font-size:13px;">还没有消息，发送第一条吧～</div>';
     // 内容没变化时不重绘，避免轮询时滚动条跳动
     if (body.innerHTML !== newBody) {
         body.innerHTML = newBody;
@@ -1714,11 +1714,11 @@ function doSearch() {
     if (currentRole === 'tech') {
         switchPage('market');
         const services = DB.get('sp_services', []).filter(s => s.status === 1 && (s.title.toLowerCase().includes(q) || s.service_desc.toLowerCase().includes(q) || (s.tags||[]).some(t => t.toLowerCase().includes(q))));
-        document.getElementById('marketServiceGrid').innerHTML = services.map(s => serviceCardHTML(s)).join('') || '<p style="color:#86868b;">未找到相关服务</p>';
+        document.getElementById('marketServiceGrid').innerHTML = services.map(s => serviceCardHTML(s)).join('') || '<p style="color:#8D87A3;">未找到相关服务</p>';
     } else {
         switchPage('tech-hall');
         const tasks = DB.get('sp_tasks', []).filter(t => t.status === 0 && (t.title.toLowerCase().includes(q) || t.desc.toLowerCase().includes(q)));
-        document.getElementById('taskGrid').innerHTML = tasks.map(t => taskCardHTML(t)).join('') || '<p style="color:#86868b;">未找到相关任务</p>';
+        document.getElementById('taskGrid').innerHTML = tasks.map(t => taskCardHTML(t)).join('') || '<p style="color:#8D87A3;">未找到相关任务</p>';
     }
 }
 
