@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <title>技能共享平台 - 让每一项技能都有价值</title>
-    <link rel="stylesheet" href="css/style.css?v=20260901b">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=20260902a">
 </head>
 <body>
 
@@ -167,6 +170,46 @@
             </div>
             <div class="project-grid" id="homeProjectGrid"></div>
         </div>
+
+        <div class="section reveal">
+            <h2 class="section-title">三步完成技能交易</h2>
+            <p class="section-subtitle">从发布到交付，全程平台保障</p>
+            <div class="steps-grid">
+                <div class="step-card">
+                    <div class="step-num">01</div>
+                    <div class="step-icon">📝</div>
+                    <h3>发布需求 / 技能</h3>
+                    <p>发布任务或上架技能，说明要求、价格与交付时间</p>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-card">
+                    <div class="step-num">02</div>
+                    <div class="step-icon">💬</div>
+                    <h3>沟通匹配</h3>
+                    <p>平台内实时聊天确认细节，组队共创项目，技能互补</p>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-card">
+                    <div class="step-num">03</div>
+                    <div class="step-icon">🛡️</div>
+                    <h3>担保交付</h3>
+                    <p>技能认证、交易担保、评价反馈，双方权益有保障</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section reveal">
+            <div class="cta-band">
+                <div class="cta-text">
+                    <h2>让每一项技能都有价值</h2>
+                    <p>加入己曜技能共享平台，接单赚钱、组队共创、技能变现</p>
+                </div>
+                <div class="cta-btns">
+                    <button class="btn-white" onclick="switchPage('service-market')">浏览服务</button>
+                    <button class="btn-outline-white" onclick="showRegisterModal()">免费注册</button>
+                </div>
+            </div>
+        </div>
     </section>
 
     <!-- ========== 服务市场（用户端） ========== -->
@@ -266,7 +309,7 @@
                 <div class="msg-sidebar-header">
                     <h3>消息</h3>
                     <div style="display:flex;gap:6px;">
-                        <button class="new-chat-btn" style="background:#0A6CFF;" onclick="showCreateGroup()">👥 群聊</button>
+                        <button class="new-chat-btn" style="background:#7C3AED;" onclick="showCreateGroup()">👥 群聊</button>
                         <button class="new-chat-btn" onclick="showNewChatModal()">＋ 聊天</button>
                     </div>
                 </div>
@@ -607,6 +650,6 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<script src="js/main.js?v=20260901"></script>
+<script src="js/main.js?v=20260902a"></script>
 </body>
 </html>

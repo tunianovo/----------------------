@@ -1083,7 +1083,7 @@ async function loadGroupData() {
 function kefuTileHtml() {
     if (!kefuUser) return '';
     return `<div class="msg-item" onclick="selectChat('kefu_${kefuUser.id}')">
-        <div class="msg-item-avatar" style="background:linear-gradient(135deg,#0A6CFF,#00C2FF);">🎧</div>
+        <div class="msg-item-avatar" style="background:linear-gradient(135deg,#7C3AED,#00C2FF);">🎧</div>
         <div class="msg-item-info">
             <div class="msg-item-name">官方客服<span class="online-dot"></span></div>
             <div class="msg-item-preview">交易分歧、账号问题随时留言</div>
@@ -1093,12 +1093,12 @@ function kefuTileHtml() {
 
 function inviteBannerHtml() {
     if (!groupInvites.length) return '';
-    return '<div style="margin:8px 10px;padding:10px 12px;background:#EDF2FF;border-radius:12px;">' +
+    return '<div style="margin:8px 10px;padding:10px 12px;background:#EDE9FE;border-radius:12px;">' +
         groupInvites.map(inv =>
             '<div style="display:flex;align-items:center;gap:8px;font-size:12px;">' +
             '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + inv.inviter_name + ' 邀请你加入「' + inv.name + '」</span>' +
             '<button onclick="handleGroupInvite(' + inv.invite_id + ',false)" style="font-size:11px;padding:4px 8px;border:none;background:none;color:#86868b;cursor:pointer;">拒绝</button>' +
-            '<button onclick="handleGroupInvite(' + inv.invite_id + ',true)" style="font-size:11px;padding:4px 10px;border:none;background:#0A6CFF;color:#fff;border-radius:12px;cursor:pointer;">同意</button>' +
+            '<button onclick="handleGroupInvite(' + inv.invite_id + ',true)" style="font-size:11px;padding:4px 10px;border:none;background:#7C3AED;color:#fff;border-radius:12px;cursor:pointer;">同意</button>' +
             '</div>').join('') +
         '</div>';
 }
@@ -1109,7 +1109,7 @@ function groupTileHtml() {
     h += '<div style="display:flex;gap:12px;overflow-x:auto;padding:4px 16px 8px;">';
     h += myGroups.map(g =>
         '<div style="width:64px;text-align:center;cursor:pointer;" onclick="selectChat(\'g_' + g.group_id + '\')">' +
-        '<div style="width:48px;height:48px;margin:0 auto;border-radius:50%;background:#EDF2FF;display:flex;align-items:center;justify-content:center;font-size:22px;">👥</div>' +
+        '<div style="width:48px;height:48px;margin:0 auto;border-radius:50%;background:#EDE9FE;display:flex;align-items:center;justify-content:center;font-size:22px;">👥</div>' +
         '<div style="font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + g.name + '</div>' +
         '</div>').join('');
     h += '</div><div style="height:1px;background:#E8EAED;margin:4px 0;"></div>';
@@ -1191,7 +1191,7 @@ async function renderGroupChatWindow() {
         return;
     }
     document.getElementById('msgChatHeader').innerHTML =
-        '<div class="msg-chat-header-avatar" style="background:#EDF2FF;color:#0A6CFF;display:flex;align-items:center;justify-content:center;">👥</div>' +
+        '<div class="msg-chat-header-avatar" style="background:#EDE9FE;color:#7C3AED;display:flex;align-items:center;justify-content:center;">👥</div>' +
         '<div class="msg-chat-header-info"><div class="msg-chat-header-name">' + (myGroups.find(g => String(g.group_id) === gid) || { name: '群聊' }).name + '</div></div>';
     const body = document.getElementById('msgChatBody');
     const newBody = msgs.length ? msgs.map(m => {
