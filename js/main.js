@@ -13,7 +13,7 @@
 const DATA_VERSION = 'v4';
 
 // ========== 前端版本检查：代码更新后自动强制刷新一次，避免设备用旧缓存JS调新接口而静默失败 ==========
-const APP_VERSION = 'v20260902b';
+const APP_VERSION = 'v20260902c';
 try {
     if (localStorage.getItem('sp_app_version') !== APP_VERSION) {
         localStorage.setItem('sp_app_version', APP_VERSION);
@@ -709,10 +709,29 @@ function startProject(projectId) {
     renderCooperate();
 }
 
-function openGroupChat(projectId) {
+async function openGroupChat(projectId) {
     closeModal('projectDetailModal');
-    currentChatKey = 'group_' + projectId;
+    const p = DB.get('sp_projects', []).find(x => x.id === projectId);
+    if (!p) { showToast('项目不存在', 'error'); return; }
+    if (!currentUser) { showLoginModal(); return; }
     switchPage('messages');
+    // 项目群聊必须在服务端真实存在（g_<group_id>），找不到同名群就在服务端建一个，
+    // 并给其他项目成员发邀请；之前用 'group_<项目id>' 当 key 导致按私聊调接口报错
+    await loadGroupData();
+    let g = myGroups.find(x => x.name === p.project_name);
+    if (!g) {
+        try {
+            const otherIds = (p.members || []).map(m => m.user_id).filter(id => Number(id) !== Number(currentUser.id));
+            const r = await apiFetch('/groups', { method: 'POST', body: JSON.stringify({ name: p.project_name, member_ids: otherIds }) }).then(r => r.json());
+            await loadGroupData();
+            g = myGroups.find(x => Number(x.group_id) === Number(r.group_id)) || { group_id: r.group_id, name: p.project_name, members: [{ user_id: currentUser.id, role: '群主' }] };
+            showToast('已为项目创建群聊', 'success');
+        } catch (e) {
+            showToast('创建项目群聊失败：' + e.message, 'error');
+            return;
+        }
+    }
+    currentChatKey = 'g_' + g.group_id;
     renderMessages();
     renderChatWindow();
 }
@@ -960,6 +979,7 @@ function normMsg(m) {
     if (isRead == null) isRead = m.read;
     if (isRead == null) isRead = m.status === 'read';
     return {
+        id: m.id,
         sender_id: m.sender_id != null ? m.sender_id : (m.from_id != null ? m.from_id : m.sender),
         receiver_id: m.receiver_id != null ? m.receiver_id : m.to_id,
         content: m.content != null ? m.content : (m.text != null ? m.text : (m.message || '')),
@@ -1191,8 +1211,9 @@ async function renderGroupChatWindow() {
         return;
     }
     document.getElementById('msgChatHeader').innerHTML =
-        '<div class="msg-chat-header-avatar" style="background:rgba(139,92,246,0.18);color:#C4B5FD;display:flex;align-items:center;justify-content:center;">👥</div>' +
-        '<div class="msg-chat-header-info"><div class="msg-chat-header-name">' + (myGroups.find(g => String(g.group_id) === gid) || { name: '群聊' }).name + '</div></div>';
+        '<div class="msg-chat-header-avatar" id="groupAvatarBtn" title="查看群成员" onclick="showGroupInfoWeb()" style="background:rgba(139,92,246,0.18);color:#C4B5FD;display:flex;align-items:center;justify-content:center;cursor:pointer;">👥</div>' +
+        '<div class="msg-chat-header-info" onclick="showGroupInfoWeb()" style="cursor:pointer;"><div class="msg-chat-header-name">' + (myGroups.find(g => String(g.group_id) === gid) || { name: '群聊' }).name + '</div>' +
+        '<div class="msg-chat-header-sub">' + ((myGroups.find(g => String(g.group_id) === gid) || {}).member_count || '') + ' 个成员 · 点击查看</div></div>';
     const body = document.getElementById('msgChatBody');
     const newBody = msgs.length ? msgs.map(m => {
         const isSelf = Number(m.sender_id) === Number(currentUser.id);
@@ -1244,6 +1265,132 @@ async function sendGroupMessage() {
         await renderGroupChatWindow();
     } catch (e) {
         showToast('发送失败：' + e.message, 'error');
+    }
+}
+
+// ========== 群信息：点击群头像查看成员 / 群主踢人 / 成员拉人 / 退群 ==========
+function currentGroupInfo() {
+    const gid = String(currentChatKey || '').slice(2);
+    return { gid: gid, g: myGroups.find(g => String(g.group_id) === gid) || null };
+}
+
+async function showGroupInfoWeb() {
+    const { gid, g } = currentGroupInfo();
+    if (!g) { showToast('群信息加载失败', 'error'); return; }
+    const members = g.members || [];
+    const isOwner = members.some(m => Number(m.user_id) === Number(currentUser.id) && m.role === '群主');
+    let nameMap = {};
+    try {
+        const list = await fetchUserInfo(members.map(m => m.user_id));
+        (list || []).forEach(u => { nameMap[u.id] = u; });
+    } catch (e) {}
+    const rows = members.map(m => {
+        const u = nameMap[m.user_id] || {};
+        const name = u.real_name || u.username || ('用户' + m.user_id);
+        const avatarHtml = u.avatar
+            ? `<img src="${u.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">`
+            : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;">${String(name).charAt(0)}</div>`;
+        const isSelf = Number(m.user_id) === Number(currentUser.id);
+        const kickBtn = (isOwner && !isSelf)
+            ? `<button onclick="kickGroupMember(${gid}, ${m.user_id})" style="font-size:11px;padding:4px 10px;border:none;border-radius:12px;background:rgba(251,113,133,0.15);color:#FB7185;cursor:pointer;">移出</button>`
+            : '';
+        const tag = m.role === '群主' ? '<span style="font-size:10px;color:#F0C97E;border:1px solid rgba(240,201,126,0.4);border-radius:8px;padding:1px 6px;margin-left:6px;">群主</span>'
+            : (isSelf ? '<span style="font-size:10px;color:#8D87A3;margin-left:6px;">我</span>' : '');
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid rgba(255,255,255,0.06);">${avatarHtml}<div style="flex:1;font-size:13px;">${name}${tag}<div style="font-size:11px;color:#8D87A3;">@${u.username || ''}</div></div>${kickBtn}</div>`;
+    }).join('');
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.id = 'groupInfoModal';
+    modal.innerHTML = '<div class="modal-content modal-sm">' +
+        '<div class="modal-header"><h3>群信息（' + members.length + '人）</h3><span class="modal-close" onclick="this.closest(\'.modal\').remove()">×</span></div>' +
+        '<div class="modal-body">' +
+        '<div style="max-height:320px;overflow-y:auto;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:6px 10px;">' + (rows || '<div style="padding:16px;text-align:center;color:#8D87A3;font-size:12px;">暂无成员</div>') + '</div>' +
+        '<div style="display:flex;gap:10px;margin-top:16px;">' +
+        '<button class="btn-primary" style="flex:1;" onclick="showInvitePicker()">＋ 邀请成员</button>' +
+        (isOwner ? '' : `<button class="btn-ghost" style="flex:1;color:#FB7185;" onclick="quitGroupWeb(${gid})">退出群聊</button>`) +
+        '</div></div></div>';
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
+// 群主移除成员
+async function kickGroupMember(gid, uid) {
+    if (!confirm('确定将该成员移出群聊吗？')) return;
+    try {
+        await apiFetch('/groups/kick', { method: 'POST', body: JSON.stringify({ group_id: Number(gid), user_id: Number(uid) }) });
+        showToast('已移出群聊', 'success');
+        const m = document.getElementById('groupInfoModal'); if (m) m.remove();
+        await loadGroupData();
+        renderMessages();
+        if (isGroupChat()) await renderGroupChatWindow();
+    } catch (e) {
+        showToast('移出失败：' + e.message, 'error');
+    }
+}
+
+// 成员退出群聊
+async function quitGroupWeb(gid) {
+    if (!confirm('确定退出该群聊吗？')) return;
+    try {
+        await apiFetch('/groups/quit', { method: 'POST', body: JSON.stringify({ group_id: Number(gid) }) });
+        showToast('已退出群聊', 'success');
+        const m = document.getElementById('groupInfoModal'); if (m) m.remove();
+        currentChatKey = null;
+        await loadGroupData();
+        renderMessages();
+        renderChatWindow();
+    } catch (e) {
+        showToast('退出失败：' + e.message, 'error');
+    }
+}
+
+// 拉人弹窗：勾选站内用户（自动排除已是成员的人）
+async function showInvitePicker() {
+    const { gid, g } = currentGroupInfo();
+    if (!g) return;
+    let users = [];
+    try { users = await apiFetch('/users').then(r => r.json()); } catch (e) {}
+    const existIds = new Set((g.members || []).map(m => Number(m.user_id)));
+    users = (users || []).filter(u => !existIds.has(Number(u.id)));
+    const selected = new Set();
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.id = 'groupInviteModal';
+    modal.innerHTML = '<div class="modal-content modal-sm">' +
+        '<div class="modal-header"><h3>邀请成员进「' + g.name + '」</h3><span class="modal-close" onclick="this.closest(\'.modal\').remove()">×</span></div>' +
+        '<div class="modal-body">' +
+        '<div style="max-height:280px;overflow-y:auto;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:6px;">' +
+        (users.length ? users.map(u =>
+            '<label style="display:flex;align-items:center;gap:8px;padding:7px 8px;cursor:pointer;border-radius:8px;" onmouseover="this.style.background=\'rgba(139,92,246,0.12)\'" onmouseout="this.style.background=\'\'">' +
+            '<input type="checkbox" data-uid="' + u.id + '">' +
+            '<span style="font-size:13px;">' + (u.real_name || u.username) + '</span>' +
+            '<span style="font-size:11px;color:#8D87A3;">@' + u.username + '</span>' +
+            '</label>').join('') : '<div style="padding:16px;text-align:center;color:#8D87A3;font-size:12px;">没有可邀请的用户</div>') +
+        '</div>' +
+        '<button class="btn-primary btn-block" onclick="submitGroupInvite()">发出邀请（对方同意后进群）</button>' +
+        '</div></div>';
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    modal.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const uid = Number(cb.dataset.uid);
+            if (cb.checked) selected.add(uid); else selected.delete(uid);
+        });
+    });
+    document.body.appendChild(modal);
+    window._groupInviteSelected = selected;
+    window._groupInviteGid = gid;
+}
+
+async function submitGroupInvite() {
+    const ids = [...(window._groupInviteSelected || [])];
+    const gid = window._groupInviteGid;
+    if (!ids.length) { showToast('请至少选择一位用户', 'error'); return; }
+    try {
+        await apiFetch('/groups/invite', { method: 'POST', body: JSON.stringify({ group_id: Number(gid), member_ids: ids }) });
+        const m = document.getElementById('groupInviteModal'); if (m) m.remove();
+        showToast('邀请已发出', 'success');
+    } catch (e) {
+        showToast('邀请失败：' + e.message, 'error');
     }
 }
 

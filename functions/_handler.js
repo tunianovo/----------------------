@@ -505,7 +505,7 @@ export async function handler(request, env, ctx) {
     }
 
     // ---------- 以下接口需要登录（token） ----------
-    const PROTECTED_EXACT = ['/me', '/send', '/history', '/read', '/conversations', '/heartbeat', '/orders', '/orders/cancel', '/settings', '/groups', '/groups/mine', '/groups/invites/handle', '/groups/quit', '/projects/recommend', '/projects/join', '/messages/delete', '/works/save'];
+    const PROTECTED_EXACT = ['/me', '/send', '/history', '/read', '/conversations', '/heartbeat', '/orders', '/orders/cancel', '/settings', '/groups', '/groups/mine', '/groups/invites/handle', '/groups/quit', '/groups/kick', '/groups/invite', '/projects/recommend', '/projects/join', '/messages/delete', '/works/save'];
     const PROTECTED_PREFIX = ['/kefu/', '/group/'];
     const needsAuth = PROTECTED_EXACT.includes(url.pathname) || PROTECTED_PREFIX.some(pp => url.pathname.startsWith(pp));
     const me = needsAuth ? await getAuthUser(env, request) : null;
@@ -1045,6 +1045,43 @@ export async function handler(request, env, ctx) {
       if (members.length === before) return json({ error: '你不是群成员' }, 400);
       await env.chat_db.prepare("UPDATE groups SET members = ? WHERE id = ?").bind(JSON.stringify(members), gid).run();
       return json({ ok: true });
+    }
+
+    // 群主踢人 POST /groups/kick {group_id, user_id}
+    if (url.pathname === '/groups/kick' && request.method === 'POST') {
+      const b = await readBody();
+      const gid = Number(b.group_id);
+      const uid = Number(b.user_id);
+      const g = (await env.chat_db.prepare("SELECT * FROM groups WHERE id = ?").bind(gid).all()).results[0];
+      if (!g) return json({ error: '群不存在' }, 404);
+      if (Number(g.owner_id) !== Number(me.id)) return json({ error: '只有群主可以移除成员' }, 403);
+      if (uid === Number(g.owner_id)) return json({ error: '不能移除群主自己' }, 400);
+      let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
+      const before = members.length;
+      members = members.filter(m => Number(m.user_id) !== uid);
+      if (members.length === before) return json({ error: '对方不是群成员' }, 400);
+      await env.chat_db.prepare("UPDATE groups SET members = ? WHERE id = ?").bind(JSON.stringify(members), gid).run();
+      return json({ ok: true, kicked: uid });
+    }
+
+    // 群成员拉人 POST /groups/invite {group_id, member_ids:[]}（被邀请人同意后进群）
+    if (url.pathname === '/groups/invite' && request.method === 'POST') {
+      const b = await readBody();
+      const gid = Number(b.group_id);
+      const g = (await env.chat_db.prepare("SELECT * FROM groups WHERE id = ?").bind(gid).all()).results[0];
+      if (!g) return json({ error: '群不存在' }, 404);
+      let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
+      if (!members.some(m => Number(m.user_id) === Number(me.id))) return json({ error: '你还不是群成员' }, 403);
+      const ids = (Array.isArray(b.member_ids) ? b.member_ids : []).map(Number)
+        .filter(v => v && v !== Number(me.id) && !members.some(m => Number(m.user_id) === v)).slice(0, 49);
+      if (!ids.length) return json({ error: '没有可邀请的人' }, 400);
+      for (const uid of ids) {
+        await env.chat_db.prepare("INSERT INTO group_invites (group_id, invitee_id, inviter_id, status, created_at) VALUES (?,?,?,0,?)")
+          .bind(gid, uid, Number(me.id), Date.now()).run();
+        await env.chat_db.prepare(`INSERT INTO private_messages (sender_id, receiver_id, content, create_time, is_read) VALUES (?,?,?,?,0)`)
+          .bind(Number(me.id), uid, '【群聊邀请】' + me.real_name + ' 邀请你加入群聊「' + g.name + '」，到消息页处理邀请。', Date.now()).run();
+      }
+      return json({ ok: true, invited: ids.length });
     }
 
     return json({ msg: 'route not found' }, 404);
