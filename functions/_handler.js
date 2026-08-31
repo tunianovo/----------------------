@@ -505,7 +505,7 @@ export async function handler(request, env, ctx) {
     }
 
     // ---------- 以下接口需要登录（token） ----------
-    const PROTECTED_EXACT = ['/me', '/send', '/history', '/read', '/conversations', '/heartbeat', '/orders', '/orders/cancel', '/settings', '/groups', '/groups/mine', '/groups/invites/handle', '/groups/quit', '/groups/kick', '/groups/invite', '/projects/recommend', '/projects/join', '/messages/delete', '/works/save'];
+    const PROTECTED_EXACT = ['/me', '/send', '/history', '/read', '/conversations', '/heartbeat', '/orders', '/orders/cancel', '/settings', '/groups', '/groups/mine', '/groups/invites/handle', '/groups/quit', '/groups/kick', '/groups/invite', '/projects/recommend', '/projects/join', '/messages/delete', '/works/save', '/users/discover'];
     const PROTECTED_PREFIX = ['/kefu/', '/group/'];
     const needsAuth = PROTECTED_EXACT.includes(url.pathname) || PROTECTED_PREFIX.some(pp => url.pathname.startsWith(pp));
     const me = needsAuth ? await getAuthUser(env, request) : null;
@@ -874,7 +874,7 @@ export async function handler(request, env, ctx) {
       return json({ ok: true, group_id: gid, invited: ids.length });
     }
 
-    // 我的群聊与收到的邀请 GET /groups/mine
+    // 我的群聊与收到的邀请 GET /groups/mine（joined 附带每群未读数 unread）
     if (url.pathname === '/groups/mine' && request.method === 'GET') {
       const joined = (await env.chat_db.prepare("SELECT * FROM groups WHERE members LIKE ?").bind('%' + String(Number(me.id)) + '%').all()).results;
       const invites = (await env.chat_db.prepare(`
@@ -882,13 +882,42 @@ export async function handler(request, env, ctx) {
         FROM group_invites gi JOIN groups g ON g.id = gi.group_id LEFT JOIN users u ON u.id = gi.inviter_id
         WHERE gi.invitee_id = ? AND gi.status = 0 ORDER BY gi.created_at DESC
       `).bind(Number(me.id)).all()).results;
+      let unreadMap = {};
+      if (joined.length) {
+        const ids = joined.map(g => Number(g.id));
+        const { results: cnt } = await env.chat_db.prepare(`
+          SELECT gm.group_id, COUNT(*) AS c
+          FROM group_messages gm
+          LEFT JOIN group_reads gr ON gr.group_id = gm.group_id AND gr.user_id = ?
+          WHERE gm.sender_id != ? AND gm.group_id IN (${ids.map(() => '?').join(',')})
+            AND gm.create_time > COALESCE(gr.last_read, 0)
+          GROUP BY gm.group_id
+        `).bind(Number(me.id), Number(me.id), ...ids).all();
+        cnt.forEach(r => { unreadMap[Number(r.group_id)] = Number(r.c); });
+      }
       return json({
         joined: joined.map(g => {
           let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
-          return { group_id: Number(g.id), name: g.name, member_count: members.length, members: members };
+          return { group_id: Number(g.id), name: g.name, member_count: members.length, members: members, owner_id: Number(g.owner_id), unread: unreadMap[Number(g.id)] || 0 };
         }),
         invites: invites.map(r => ({ invite_id: Number(r.invite_id), group_id: Number(r.group_id), name: r.name, inviter_name: r.inviter_name || '用户', created_at: Number(r.created_at) }))
       });
+    }
+
+    // 发现用户 GET /users/discover（仅返回开启"允许别人发现我"的用户，排除自己）
+    if (url.pathname === '/users/discover' && request.method === 'GET') {
+      const { results } = await env.chat_db.prepare(`
+        SELECT id, username, real_name, user_type, skill_tag, avatar, bio, last_seen
+        FROM users
+        WHERE (discoverable IS NULL OR discoverable = 1) AND id != ?
+        ORDER BY last_seen DESC
+        LIMIT 50
+      `).bind(Number(me.id)).all();
+      return json(results.map(u => ({
+        id: Number(u.id), username: u.username, real_name: u.real_name, user_type: Number(u.user_type),
+        skill_tag: u.skill_tag || '', avatar: u.avatar || null, bio: u.bio || '',
+        online: !!(u.last_seen && (Date.now() - Number(u.last_seen)) < ONLINE_WINDOW)
+      })));
     }
 
     // 处理邀请 POST /groups/invites/handle {invite_id, accept}

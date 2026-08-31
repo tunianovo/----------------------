@@ -13,7 +13,7 @@
 const DATA_VERSION = 'v4';
 
 // ========== 前端版本检查：代码更新后自动强制刷新一次，避免设备用旧缓存JS调新接口而静默失败 ==========
-const APP_VERSION = 'v20260902c';
+const APP_VERSION = 'v20260902d';
 try {
     if (localStorage.getItem('sp_app_version') !== APP_VERSION) {
         localStorage.setItem('sp_app_version', APP_VERSION);
@@ -666,7 +666,7 @@ function showProjectDetail(id) {
     const isCreator = p.creator_id === currentUser?.id;
     const membersHtml = (p.members || []).map(m => {
         const u = users.find(x => x.id === m.user_id);
-        return `<div class="project-member-card"><div class="avatar">${(u?.real_name || u?.username || '?').charAt(0)}</div><div><div class="name">${u?.real_name || u?.username || '未知'}</div><div class="role">${m.role}</div></div></div>`;
+        return `<div class="project-member-card" style="cursor:pointer;" onclick="showUserProfile(${m.user_id})" title="查看主页"><div class="avatar">${(u?.real_name || u?.username || '?').charAt(0)}</div><div><div class="name">${u?.real_name || u?.username || '未知'}</div><div class="role">${m.role}</div></div></div>`;
     }).join('');
     document.getElementById('projectDetailTitle').textContent = p.project_name;
     document.getElementById('projectDetailBody').innerHTML = `
@@ -761,33 +761,33 @@ function renderOrders() {
         orders.filter(o => o.buyer_id === currentUser.id && (o.order_status === 0 || o.order_status === 1)).forEach(o => {
             const s = services.find(x => x.id === o.service_id);
             const seller = users.find(u => u.id === o.seller_id);
-            list.push({ type:'service', id:o.id, title:s?.title || '服务', cover:s?.cover, price:o.order_price, other:seller, status:o.order_status, chatKey:'service_'+s?.id, otherId:o.seller_id });
+            list.push({ type:'service', id:o.id, title:s?.title || '服务', cover:s?.cover, price:o.order_price, other:seller, status:o.order_status, chatKey:'service_'+s?.id, otherId:o.seller_id, createdAt:o.created_at });
         });
         tasks.filter(t => t.taker_id === currentUser.id && t.status === 1).forEach(t => {
             const publisher = users.find(u => u.id === t.publisher_id);
-            list.push({ type:'task', id:t.id, title:t.title, cover:t.cover, price:t.budget, other:publisher, status:'progress', chatKey:'task_'+t.id, otherId:t.publisher_id });
+            list.push({ type:'task', id:t.id, title:t.title, cover:t.cover, price:t.budget, other:publisher, status:'progress', chatKey:'task_'+t.id, otherId:t.publisher_id, createdAt:t.created_at });
         });
     } else if (currentOrderTab === 'published') {
         // 我发布的：我是卖家的服务订单 + 我是发布者的任务，进行中
         orders.filter(o => o.seller_id === currentUser.id && (o.order_status === 0 || o.order_status === 1)).forEach(o => {
             const s = services.find(x => x.id === o.service_id);
             const buyer = users.find(u => u.id === o.buyer_id);
-            list.push({ type:'service', id:o.id, title:s?.title || '服务', cover:s?.cover, price:o.order_price, other:buyer, status:o.order_status, chatKey:'service_'+s?.id, otherId:o.buyer_id });
+            list.push({ type:'service', id:o.id, title:s?.title || '服务', cover:s?.cover, price:o.order_price, other:buyer, status:o.order_status, chatKey:'service_'+s?.id, otherId:o.buyer_id, createdAt:o.created_at });
         });
         tasks.filter(t => t.publisher_id === currentUser.id && t.status === 1).forEach(t => {
             const taker = users.find(u => u.id === t.taker_id);
-            list.push({ type:'task', id:t.id, title:t.title, cover:t.cover, price:t.budget, other:taker, status:'progress', chatKey:'task_'+t.id, otherId:t.taker_id });
+            list.push({ type:'task', id:t.id, title:t.title, cover:t.cover, price:t.budget, other:taker, status:'progress', chatKey:'task_'+t.id, otherId:t.taker_id, createdAt:t.created_at });
         });
     } else {
         // 历史订单：所有已完成/已取消
         orders.filter(o => (o.buyer_id === currentUser.id || o.seller_id === currentUser.id) && (o.order_status === 2 || o.order_status === 3)).forEach(o => {
             const s = services.find(x => x.id === o.service_id);
             const other = users.find(u => u.id === (o.buyer_id === currentUser.id ? o.seller_id : o.buyer_id));
-            list.push({ type:'service', id:o.id, title:s?.title || '服务', cover:s?.cover, price:o.order_price, other, status:o.order_status, chatKey:'service_'+s?.id, otherId:o.buyer_id === currentUser.id ? o.seller_id : o.buyer_id });
+            list.push({ type:'service', id:o.id, title:s?.title || '服务', cover:s?.cover, price:o.order_price, other, status:o.order_status, chatKey:'service_'+s?.id, otherId:o.buyer_id === currentUser.id ? o.seller_id : o.buyer_id, createdAt:o.created_at });
         });
         tasks.filter(t => (t.publisher_id === currentUser.id || t.taker_id === currentUser.id) && (t.status === 2 || t.status === 3)).forEach(t => {
             const other = users.find(u => u.id === (t.publisher_id === currentUser.id ? t.taker_id : t.publisher_id));
-            list.push({ type:'task', id:t.id, title:t.title, cover:t.cover, price:t.budget, other, status:t.status === 2 ? 'completed' : 'cancelled', chatKey:'task_'+t.id, otherId:t.publisher_id === currentUser.id ? t.taker_id : t.publisher_id });
+            list.push({ type:'task', id:t.id, title:t.title, cover:t.cover, price:t.budget, other, status:t.status === 2 ? 'completed' : 'cancelled', chatKey:'task_'+t.id, otherId:t.publisher_id === currentUser.id ? t.taker_id : t.publisher_id, createdAt:t.created_at });
         });
     }
 
@@ -817,6 +817,7 @@ function renderOrders() {
             <div class="order-info">
                 <div class="order-header"><div class="order-title">${item.title}<span class="order-type-badge ${item.type}">${item.type === 'service' ? '服务订单' : '需求任务'}</span></div></div>
                 <div class="order-meta">${item.type === 'service' ? '对方：' : (item.otherId === currentUser.id ? '接单者：' : '发布者：')}${item.other?.real_name || item.other?.username || '未知'}</div>
+                ${item.createdAt ? `<div class="order-meta" style="font-size:12px;color:var(--text-tertiary);">🕐 ${fmtDateTime(item.createdAt)}</div>` : ''}
                 <div class="order-price">¥${item.price}</div>
             </div>
             <div class="order-actions"><span class="order-status ${st.cls}">${st.text}</span>${actions}</div>
@@ -1128,8 +1129,9 @@ function groupTileHtml() {
     let h = '<div style="padding:10px 16px 2px;font-size:12px;color:#8D87A3;">我的群聊</div>';
     h += '<div style="display:flex;gap:12px;overflow-x:auto;padding:4px 16px 8px;">';
     h += myGroups.map(g =>
-        '<div style="width:64px;text-align:center;cursor:pointer;" onclick="selectChat(\'g_' + g.group_id + '\')">' +
+        '<div style="width:64px;text-align:center;cursor:pointer;position:relative;flex-shrink:0;" onclick="selectChat(\'g_' + g.group_id + '\')">' +
         '<div style="width:48px;height:48px;margin:0 auto;border-radius:50%;background:rgba(139,92,246,0.15);display:flex;align-items:center;justify-content:center;font-size:22px;">👥</div>' +
+        ((g.unread || 0) > 0 ? '<span style="position:absolute;top:-2px;right:6px;min-width:16px;height:16px;border-radius:8px;background:#FB7185;color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;padding:0 4px;">' + g.unread + '</span>' : '') +
         '<div style="font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + g.name + '</div>' +
         '</div>').join('');
     h += '</div><div style="height:1px;background:rgba(255,255,255,0.08);margin:4px 0;"></div>';
@@ -1197,6 +1199,126 @@ async function submitCreateGroup() {
         renderMessages();
     } catch (e) {
         showToast('创建失败：' + e.message, 'error');
+    }
+}
+
+// ========== 发现用户（仅展示开启"允许别人发现我"的用户） ==========
+function fmtDateTime(ts) {
+    if (!ts) return '';
+    const d = new Date(Number(ts));
+    return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+// 从任意入口发起私聊（项目成员、发现用户等）
+function openPrivateChat(uid) {
+    if (!currentUser) { showLoginModal(); return; }
+    currentChatKey = String(uid);
+    switchPage('messages');
+    renderMessages();
+    renderChatWindow();
+}
+
+// ========== 个人主页（资料 + 作品 + 聊一聊） ==========
+async function showUserProfile(uid) {
+    let u = null, works = [];
+    try {
+        const list = await fetchUserInfo([uid]);
+        u = (list && list[0]) || DB.get('sp_users', []).find(x => Number(x.id) === Number(uid)) || null;
+    } catch (e) {}
+    try { works = await apiFetch('/works?user_id=' + uid).then(r => r.json()); } catch (e) {}
+    if (!u) { showToast('用户不存在', 'error'); return; }
+    const name = u.real_name || u.username;
+    const avatarHtml = u.avatar
+        ? `<img src="${u.avatar}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid rgba(139,92,246,0.5);">`
+        : `<div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;">${String(name).charAt(0)}</div>`;
+    const tags = String(u.skill_tag || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
+    const worksHtml = (works || []).map(w => {
+        const src = String(w).startsWith('data:') ? w : 'data:image/jpeg;base64,' + w;
+        return `<div style="border-radius:12px;overflow:hidden;background:var(--bg-secondary);aspect-ratio:1;"><img src="${src}" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:28px;\\'>🎬</div>'"></div>`;
+    }).join('');
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.id = 'userProfileModal';
+    modal.innerHTML = '<div class="modal-content modal-sm">' +
+        '<div class="modal-header"><h3>个人主页</h3><span class="modal-close" onclick="this.closest(\'.modal\').remove()">×</span></div>' +
+        '<div class="modal-body">' +
+        '<div style="display:flex;align-items:center;gap:14px;">' + avatarHtml +
+        '<div style="flex:1;min-width:0;"><div style="font-size:17px;font-weight:700;">' + name + (u.online ? '<span class="online-dot"></span>' : '') + '</div>' +
+        '<div style="font-size:12px;color:#8D87A3;">@' + (u.username || '') + ' · ' + (Number(u.user_type) === 1 ? '技能提供者' : '普通用户') + '</div>' +
+        (u.bio ? '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">' + u.bio + '</div>' : '') + '</div></div>' +
+        (tags.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;">' + tags.map(t => '<span class="service-tag">' + t + '</span>').join('') + '</div>' : '') +
+        '<div style="font-size:13px;font-weight:600;margin:16px 0 8px;">作品展示（' + (works || []).length + '）</div>' +
+        ((works || []).length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:300px;overflow-y:auto;">' + worksHtml + '</div>'
+            : '<div style="color:#8D87A3;font-size:12px;padding:8px 0 4px;">暂无作品</div>') +
+        (currentUser && Number(currentUser.id) !== Number(uid) ? '<button class="btn-primary btn-block" onclick="document.getElementById(\'userProfileModal\').remove();openPrivateChat(' + uid + ')">💬 发消息</button>' : '') +
+        '</div></div>';
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
+async function showDiscoverUsers() {
+    if (!currentUser) { showLoginModal(); return; }
+    let users = [];
+    try { users = await apiFetch('/users/discover').then(r => r.json()); } catch (e) {
+        showToast('加载失败：' + e.message, 'error'); return;
+    }
+    users = users || [];
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.id = 'discoverModal';
+    modal.innerHTML = '<div class="modal-content modal-sm">' +
+        '<div class="modal-header"><h3>发现同学（' + users.length + '人）</h3><span class="modal-close" onclick="this.closest(\'.modal\').remove()">×</span></div>' +
+        '<div class="modal-body">' +
+        '<div style="max-height:360px;overflow-y:auto;">' +
+        (users.length ? users.map(u => {
+            const avatarHtml = u.avatar
+                ? `<img src="${u.avatar}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">`
+                : `<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;">${String(u.real_name || u.username).charAt(0)}</div>`;
+            return '<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,0.06);">' +
+                '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;" onclick="document.getElementById(\'discoverModal\').remove();showUserProfile(' + u.id + ')" title="查看主页">' +
+                avatarHtml +
+                '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:14px;font-weight:600;">' + (u.real_name || u.username) + (u.online ? '<span class="online-dot"></span>' : '') + ' <span style="font-size:11px;color:#8D87A3;font-weight:400;">@' + u.username + '</span></div>' +
+                '<div style="font-size:11px;color:#8D87A3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (u.skill_tag ? '🏷 ' + u.skill_tag : (u.bio || '暂无标签')) + '</div>' +
+                '</div></div>' +
+                '<button class="btn-primary btn-sm" onclick="document.getElementById(\'discoverModal\').remove();openPrivateChat(' + u.id + ')">聊一聊</button>' +
+                '</div>';
+        }).join('') : '<div style="padding:24px;text-align:center;color:#8D87A3;font-size:13px;">暂时没有可发现的用户<br><span style="font-size:11px;">在设置里开启「允许别人发现我」后，会出现在这里</span></div>') +
+        '</div></div></div>';
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
+// ========== 设置：隐私开关（允许别人发现我） ==========
+function showWebSettings() {
+    if (!currentUser) { showLoginModal(); return; }
+    const on = currentUser.discoverable !== 0;
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.id = 'webSettingsModal';
+    modal.innerHTML = '<div class="modal-content modal-sm">' +
+        '<div class="modal-header"><h3>设置</h3><span class="modal-close" onclick="this.closest(\'.modal\').remove()">×</span></div>' +
+        '<div class="modal-body">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;">' +
+        '<div><div style="font-size:14px;font-weight:600;">允许别人发现我</div><div style="font-size:12px;color:#8D87A3;">关闭后，你不会出现在「发现同学」列表中</div></div>' +
+        '<label style="position:relative;width:44px;height:24px;cursor:pointer;"><input type="checkbox" id="discoverSwitch" ' + (on ? 'checked' : '') + ' style="display:none;" onchange="this.nextElementSibling.style.background=this.checked?\'#8B5CF6\':\'rgba(255,255,255,0.15)\';this.nextElementSibling.firstElementChild.style.transform=this.checked?\'translateX(20px)\':\'translateX(0)\'"><span style="position:absolute;inset:0;border-radius:12px;background:' + (on ? '#8B5CF6' : 'rgba(255,255,255,0.15)') + ';transition:background 0.2s;"><span style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform 0.2s;transform:translateX(' + (on ? '20px' : '0') + ');"></span></span></label>' +
+        '</div>' +
+        '<button class="btn-primary btn-block" onclick="saveWebSettings()">保存</button>' +
+        '</div></div>';
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
+async function saveWebSettings() {
+    const sw = document.getElementById('discoverSwitch');
+    try {
+        await apiFetch('/settings', { method: 'PUT', body: JSON.stringify({ discoverable: sw.checked ? 1 : 0 }) });
+        currentUser.discoverable = sw.checked ? 1 : 0;
+        DB.set('sp_current_user', currentUser);
+        const m = document.getElementById('webSettingsModal'); if (m) m.remove();
+        showToast('设置已保存', 'success');
+    } catch (e) {
+        showToast('保存失败：' + e.message, 'error');
     }
 }
 
@@ -1422,8 +1544,8 @@ async function renderChatWindow() {
     } catch (e) { /* 离线时用本地缓存 */ }
     const displayName = other ? (other.real_name || other.username) : '用户';
     const avatarHtml = other && other.avatar
-        ? `<img src="${other.avatar}" class="msg-chat-header-avatar" style="object-fit:cover;">`
-        : `<div class="msg-chat-header-avatar">${String(displayName).charAt(0)}</div>`;
+        ? `<img src="${other.avatar}" class="msg-chat-header-avatar" style="object-fit:cover;cursor:pointer;" onclick="showUserProfile('${peerId}')" title="查看主页">`
+        : `<div class="msg-chat-header-avatar" style="cursor:pointer;" onclick="showUserProfile('${peerId}')" title="查看主页">${String(displayName).charAt(0)}</div>`;
     document.getElementById('msgChatHeader').innerHTML = `${avatarHtml}<div class="msg-chat-header-info"><div class="msg-chat-header-name">${displayName}${other && other.online ? '<span class="chat-online-tag">● 在线</span>' : ''}</div></div>`;
 
     let msgs = [];
@@ -1563,10 +1685,6 @@ function openChatFromOrder(chatKey) {
     renderChatWindow();
 }
 
-function openGroupChat(projectId) {
-    showToast('群聊功能暂未接入后端，请直接私信联系', 'error');
-}
-
 // ---------- 无 websocket：在消息页时每10秒轮询拉取新消息 ----------
 setInterval(async () => {
     if (!currentUser || currentPage !== 'messages' || msgPolling) return;
@@ -1604,8 +1722,9 @@ function updateBadges() {
     const orderBadge = document.getElementById('navOrderBadge');
     if (orderUnread > 0) { orderBadge.textContent = orderUnread; orderBadge.style.display = 'flex'; }
     else orderBadge.style.display = 'none';
-    // 消息未读
-    const msgUnread = Object.values(getUnreadCount()).reduce((a,b) => a+b, 0);
+    // 消息未读（私聊 + 群聊）
+    const groupUnread = (typeof myGroups !== 'undefined' ? myGroups : []).reduce((a, g) => a + (g.unread || 0), 0);
+    const msgUnread = Object.values(getUnreadCount()).reduce((a,b) => a+b, 0) + groupUnread;
     const msgBadge = document.getElementById('navMsgBadge');
     if (msgUnread > 0) { msgBadge.textContent = msgUnread; msgBadge.style.display = 'flex'; }
     else msgBadge.style.display = 'none';

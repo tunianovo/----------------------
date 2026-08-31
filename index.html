@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260902c">
+    <link rel="stylesheet" href="css/style.css?v=20260902d">
 </head>
 <body>
 
@@ -69,6 +69,7 @@
                 <img class="user-avatar-img" id="userAvatarImg" src="" style="display:none;" onclick="switchPage('messages')">
                 <span class="user-avatar" id="userAvatar">U</span>
                 <span class="user-name" id="userName">用户</span>
+                <button class="btn-logout" onclick="showWebSettings()" title="设置">⚙️</button>
                 <button class="btn-logout" onclick="logout()">退出</button>
             </div>
         </div>
@@ -311,6 +312,7 @@
                     <h3>消息</h3>
                     <div style="display:flex;gap:6px;">
                         <button class="new-chat-btn" style="background:#8B5CF6;" onclick="showCreateGroup()">👥 群聊</button>
+                        <button class="new-chat-btn" style="background:rgba(255,255,255,0.12);" onclick="showDiscoverUsers()">🔍 发现</button>
                         <button class="new-chat-btn" onclick="showNewChatModal()">＋ 聊天</button>
                     </div>
                 </div>
@@ -651,6 +653,6 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<script src="js/main.js?v=20260902c"></script>
+<script src="js/main.js?v=20260902d"></script>
 </body>
 </html>
