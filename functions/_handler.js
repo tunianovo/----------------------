@@ -1072,8 +1072,9 @@ export async function handler(request, env, ctx) {
       if (!g) return json({ error: '群不存在' }, 404);
       let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
       if (!members.some(m => Number(m.user_id) === Number(me.id))) return json({ error: '你还不是群成员' }, 403);
+      const pending = (await env.chat_db.prepare("SELECT invitee_id FROM group_invites WHERE group_id = ? AND status = 0").bind(gid).all()).results.map(r => Number(r.invitee_id));
       const ids = (Array.isArray(b.member_ids) ? b.member_ids : []).map(Number)
-        .filter(v => v && v !== Number(me.id) && !members.some(m => Number(m.user_id) === v)).slice(0, 49);
+        .filter(v => v && v !== Number(me.id) && !members.some(m => Number(m.user_id) === v) && !pending.includes(v)).slice(0, 49);
       if (!ids.length) return json({ error: '没有可邀请的人' }, 400);
       for (const uid of ids) {
         await env.chat_db.prepare("INSERT INTO group_invites (group_id, invitee_id, inviter_id, status, created_at) VALUES (?,?,?,0,?)")
