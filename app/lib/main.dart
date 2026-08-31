@@ -24,7 +24,7 @@ final Api api = Api();
 final ValueNotifier<UserAccount?> session = ValueNotifier(null);
 
 /// 当前 App 版本（与 pubspec.yaml 保持一致；用于更新检查）
-const String kAppVersion = '1.2.7';
+const String kAppVersion = '1.2.8';
 
 /// 崩溃日志写入（同步写，闪退前尽量落盘）
 void writeCrashLog(String what, Object error, StackTrace? st) {
@@ -285,5 +285,25 @@ class SessionStore {
   static Future<void> saveRole(String role) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_kRole, role);
+  }
+
+  static const _kTab = 'last_tab';
+
+  /// 上次退出前停留的底部 tab（启动时恢复）
+  static Future<int> loadTab() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final v = p.getInt(_kTab) ?? 0;
+      return (v >= 0 && v <= 2) ? v : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<void> saveTab(int i) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setInt(_kTab, i);
+    } catch (_) {}
   }
 }

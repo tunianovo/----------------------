@@ -7,6 +7,7 @@ import '../main.dart';
 import '../cache.dart';
 import '../theme.dart';
 import 'chat_page.dart';
+import 'profile_page.dart';
 
 class ProjectsPage extends StatefulWidget {
   final UserAccount me;
@@ -190,6 +191,45 @@ class _ProjectCard extends StatelessWidget {
   final VoidCallback onJoin;
   const _ProjectCard({required this.project, required this.me, required this.joining, required this.onJoin});
 
+  bool get isMember => project.members.any((m) => m is Map && ((m['user_id'] as num?)?.toInt() == me.id));
+
+  /// 打开项目群聊：找同名群；没有就在服务端创建（并邀请其他成员），再进群
+  Future<void> _openProjectGroup(BuildContext context) async {
+    try {
+      final groups = await api.myGroups();
+      var g = groups.where((x) => x.name == project.name).toList();
+      int gid;
+      if (g.isNotEmpty) {
+        gid = g.first.groupId;
+      } else {
+        final others = project.members
+            .whereType<Map>()
+            .map((m) => (m['user_id'] as num?)?.toInt())
+            .whereType<int>()
+            .where((id) => id != me.id)
+            .toList();
+        gid = await api.createGroup(project.name, others);
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Text('已为项目创建群聊，已邀请项目成员'),
+            backgroundColor: kPrimary, behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      }
+      if (!context.mounted) return;
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: -gid, peerName: project.name, meId: me.id)));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.message), backgroundColor: const Color(0xFFE5484D),
+          behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('打开群聊失败，请重试'), backgroundColor: Color(0xFFE5484D),
+          behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    }
+  }
+
   void _showRecommend(BuildContext context, ProjectItem p) {
     showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.white,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
@@ -246,7 +286,8 @@ class _ProjectCard extends StatelessWidget {
               )).toList()),
           const SizedBox(height: 12),
           Row(children: [
-            UserAvatar(name: project.creatorName, radius: 13),
+            GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: project.creatorId))),
+                child: UserAvatar(name: project.creatorName, radius: 13)),
             const SizedBox(width: 8),
             Text(project.creatorName, style: const TextStyle(fontSize: 12, color: Colors.black54)),
             if (project.creatorOnline) ...[const SizedBox(width: 5), const OnlineDot(size: 6)],
@@ -267,7 +308,7 @@ class _ProjectCard extends StatelessWidget {
             ))),
           const SizedBox(height: 2),
           Row(children: [
-            if (!isCreator)
+            if (!isMember && !isCreator)
               Expanded(child: FilledButton.icon(
                 onPressed: joining ? null : onJoin,
                 icon: joining
@@ -275,13 +316,14 @@ class _ProjectCard extends StatelessWidget {
                     : const Icon(Icons.how_to_reg_outlined, size: 18),
                 label: const Text('加入团队'),
               ))
-            else
-              Expanded(child: OutlinedButton.icon(
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: project.creatorId, peerName: project.creatorName, meId: me.id))),
-                icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                label: const Text('我是发起人'),
+            else ...[
+              Expanded(child: FilledButton.icon(
+                onPressed: () => _openProjectGroup(context),
+                icon: const Icon(Icons.groups_outlined, size: 18),
+                label: const Text('进入群聊'),
               )),
-            const SizedBox(width: 10),
+              const SizedBox(width: 10),
+            ],
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(0, 48),

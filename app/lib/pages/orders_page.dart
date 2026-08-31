@@ -135,6 +135,8 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                 subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const SizedBox(height: 2),
                   Text('${o.amBuyer ? '已购 · 卖家' : '来自买家'} ${o.peerName}', style: const TextStyle(fontSize: 12, color: Colors.black45)),
+                  if (o.createdAt > 0)
+                    Text('发布时间 ${_fmtDateTime(o.createdAt)}', style: const TextStyle(fontSize: 11, color: Colors.black26)),
                   if (cancellable && o.amBuyer && o.status == 0)
                     const Text('长按可取消订单', style: TextStyle(fontSize: 10, color: Colors.black26)),
                 ]),
@@ -155,6 +157,12 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
       child: const Icon(Icons.design_services, color: kPrimary, size: 22));
 
   Color _statusColor(int s) => switch (s) { 2 => const Color(0xFF2ECC71), 3 => Colors.black26, _ => const Color(0xFFF5A623) };
+
+  String _fmtDateTime(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}/${d.month}/${d.day} ${two(d.hour)}:${two(d.minute)}';
+  }
 }
 
 // ---------- 订单详情（交易快照 + 客服） ----------

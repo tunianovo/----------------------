@@ -61,6 +61,21 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _load({bool silent = false}) async {
+    // 本地缓存秒开：先渲染上次保存的聊天记录，再后台拉新替换
+    if (loading) {
+      final cached = await LocalCache.get(widget.isGroup ? 'gchat_${widget.realId}' : 'chat_${widget.realId}');
+      if (cached is List && cached.isNotEmpty && mounted) {
+        setState(() {
+          if (widget.isGroup) {
+            groupMessages = cached.map(GroupMessage.fromJson).toList();
+          } else {
+            messages = cached.map(ChatMessage.fromJson).toList();
+          }
+          loading = false;
+        });
+        _scrollToBottom();
+      }
+    }
     try {
       if (widget.isGroup) {
         final list = await api.groupHistory(widget.realId);

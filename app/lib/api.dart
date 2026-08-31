@@ -178,6 +178,7 @@ class ProjectItem {
   final double budget;
   final int memberCount;
   final List<String> needSkills;
+  final List<dynamic> members; // [{user_id, role}]
   ProjectItem({
     required this.id,
     required this.name,
@@ -188,6 +189,7 @@ class ProjectItem {
     required this.budget,
     required this.memberCount,
     required this.needSkills,
+    this.members = const [],
   });
 
   factory ProjectItem.fromJson(dynamic j) => ProjectItem(
@@ -200,6 +202,7 @@ class ProjectItem {
         budget: (j['total_budget'] as num?)?.toDouble() ?? 0,
         memberCount: (j['member_count'] as num?)?.toInt() ?? 0,
         needSkills: ((j['need_skills'] as List?) ?? []).map((e) => e.toString()).toList(),
+        members: (j['members'] ?? []) as List<dynamic>,
       );
 }
 
@@ -246,12 +249,14 @@ class GroupInfo {
   final String name;
   final int memberCount;
   final List<dynamic> members; // [{user_id, role}]
-  GroupInfo({required this.groupId, required this.name, required this.memberCount, this.members = const []});
+  final int unread;
+  GroupInfo({required this.groupId, required this.name, required this.memberCount, this.members = const [], this.unread = 0});
   factory GroupInfo.fromJson(dynamic j) => GroupInfo(
         groupId: (j['group_id'] as num).toInt(),
         name: (j['name'] ?? '群聊') as String,
         memberCount: (j['member_count'] as num?)?.toInt() ?? 0,
         members: (j['members'] ?? []) as List<dynamic>,
+        unread: (j['unread'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -555,8 +560,9 @@ class Api {
     return joined;
   }
 
-  Future<void> createGroup(String name, List<int> memberIds) async {
-    await _send('POST', '/groups', body: {'name': name, 'member_ids': memberIds});
+  Future<int> createGroup(String name, List<int> memberIds) async {
+    final d = await _send('POST', '/groups', body: {'name': name, 'member_ids': memberIds});
+    return (d['group_id'] as num).toInt();
   }
 
   Future<void> handleGroupInvite(int inviteId, bool accept) async {

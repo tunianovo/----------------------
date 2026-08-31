@@ -274,7 +274,13 @@ class ChatsPageState extends State<ChatsPage> with AutomaticKeepAliveClientMixin
             await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(peerId: -g.groupId, peerName: g.name, meId: widget.me.id)));
             refresh();
           }, child: SizedBox(width: 64, child: Column(children: [
-            CircleAvatar(radius: 24, backgroundColor: kPrimary.withOpacity(0.12), child: const Icon(Icons.group, color: kPrimary, size: 24)),
+            Stack(clipBehavior: Clip.none, children: [
+              CircleAvatar(radius: 24, backgroundColor: kPrimary.withOpacity(0.12), child: const Icon(Icons.group, color: kPrimary, size: 24)),
+              if (g.unread > 0)
+                Positioned(right: -3, top: -3, child: Container(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(color: const Color(0xFFE5484D), borderRadius: BorderRadius.circular(9), border: Border.all(color: Colors.white, width: 1.5)),
+                    child: Text('${g.unread}', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)))),
+            ]),
             const SizedBox(height: 4),
             Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
           ])));

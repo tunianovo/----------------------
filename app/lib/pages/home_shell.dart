@@ -1,5 +1,6 @@
 // ============================================================
-// 主框架：底部导航（服务 / 共创 / 消息 / 我的）
+// 主框架：底部导航（服务 / 消息 / 我的）
+// 全局未读轮询（私聊+群聊）：导航红点 + 新消息横幅；记住上次停留的 tab
 // ============================================================
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -32,6 +33,8 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     SessionStore.loadRole().then((r) { if (mounted) setState(() => role = r); });
+    // 恢复上次退出前停留的页面
+    SessionStore.loadTab().then((t) { if (mounted && tab != t) setState(() => tab = t); });
     // 全局未读轮询：任何页面都更新红点；新消息到达且不在消息页时弹横幅
     _pollUnread();
     _unreadPoll = Timer.periodic(const Duration(seconds: 5), (_) => _pollUnread());
@@ -44,6 +47,13 @@ class _HomeShellState extends State<HomeShell> {
       for (final cv in convs) {
         total += cv.unread;
       }
+      // 群聊未读也计入红点与横幅
+      try {
+        final groups = await api.myGroups();
+        for (final g in groups) {
+          total += g.unread;
+        }
+      } catch (_) {}
       if (!mounted) return;
       setState(() => unreadTotal = total);
       if (lastSeenUnread >= 0 && total > lastSeenUnread && tab != 1) {
@@ -76,6 +86,17 @@ class _HomeShellState extends State<HomeShell> {
     super.dispose();
   }
 
+  /// 消息导航图标（带未读红点；用固定 10px 圆点，避免 Badge 拉伸问题）
+  Widget _chatIcon(IconData icon) {
+    return Stack(clipBehavior: Clip.none, children: [
+      Icon(icon),
+      if (unreadTotal > 0)
+        Positioned(right: -3, top: -3, child: Container(width: 10, height: 10,
+            decoration: BoxDecoration(color: const Color(0xFFE5484D), shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5)))),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -98,11 +119,15 @@ class _HomeShellState extends State<HomeShell> {
         selectedIndex: tab,
         onDestinationSelected: (i) {
           setState(() => tab = i);
-          if (i == 1) _chatsKey.currentState?.refresh();
+          SessionStore.saveTab(i);
+          if (i == 1) {
+            _chatsKey.currentState?.refresh();
+            lastSeenUnread = 0;
+          }
         },
         destinations: [
           const NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: '服务'),
-          const NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '消息'),
+          NavigationDestination(icon: _chatIcon(Icons.chat_bubble_outline), selectedIcon: _chatIcon(Icons.chat_bubble), label: '消息'),
           const NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
         ],
       ),
