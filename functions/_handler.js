@@ -865,6 +865,9 @@ export async function handler(request, env, ctx) {
       const res = await env.chat_db.prepare("INSERT INTO groups (name, owner_id, members, created_at) VALUES (?,?,?,?)")
         .bind(name, Number(me.id), JSON.stringify(members), Date.now()).run();
       const gid = res.meta.last_row_id;
+      // 群主已读位点从建群时刻起算，历史消息不算未读
+      await env.chat_db.prepare("INSERT INTO group_reads (group_id, user_id, last_read) VALUES (?,?,?) ON CONFLICT(group_id, user_id) DO NOTHING")
+        .bind(gid, Number(me.id), Date.now()).run();
       for (const uid of ids) {
         await env.chat_db.prepare("INSERT INTO group_invites (group_id, invitee_id, inviter_id, status, created_at) VALUES (?,?,?,0,?)")
           .bind(gid, uid, Number(me.id), Date.now()).run();
@@ -885,12 +888,15 @@ export async function handler(request, env, ctx) {
       let unreadMap = {};
       if (joined.length) {
         const ids = joined.map(g => Number(g.id));
+        // 只统计"打开过至少一次"的群（有已读位点），且排除系统消息；
+        // 从未打开的群不计未读，避免老群历史把角标永远顶住
         const { results: cnt } = await env.chat_db.prepare(`
           SELECT gm.group_id, COUNT(*) AS c
           FROM group_messages gm
-          LEFT JOIN group_reads gr ON gr.group_id = gm.group_id AND gr.user_id = ?
+          JOIN group_reads gr ON gr.group_id = gm.group_id AND gr.user_id = ?
           WHERE gm.sender_id != ? AND gm.group_id IN (${ids.map(() => '?').join(',')})
-            AND gm.create_time > COALESCE(gr.last_read, 0)
+            AND gm.create_time > gr.last_read
+            AND gm.content != '我加入了群聊'
           GROUP BY gm.group_id
         `).bind(Number(me.id), Number(me.id), ...ids).all();
         cnt.forEach(r => { unreadMap[Number(r.group_id)] = Number(r.c); });
@@ -934,6 +940,9 @@ export async function handler(request, env, ctx) {
         let members = []; try { members = JSON.parse(g.members || '[]'); } catch (e) {}
         members.push({ user_id: Number(me.id), role: '成员' });
         await env.chat_db.prepare("UPDATE groups SET members = ? WHERE id = ?").bind(JSON.stringify(members), inv.group_id).run();
+        // 新成员已读位点从进群时刻起算
+        await env.chat_db.prepare("INSERT INTO group_reads (group_id, user_id, last_read) VALUES (?,?,?) ON CONFLICT(group_id, user_id) DO NOTHING")
+          .bind(inv.group_id, Number(me.id), Date.now()).run();
         await env.chat_db.prepare(`INSERT INTO group_messages (group_id, sender_id, content, create_time) VALUES (?,?,?,?)`)
           .bind(inv.group_id, Number(me.id), '我加入了群聊', Date.now()).run();
         return json({ ok: true, joined: true, group_id: inv.group_id, name: g.name });
